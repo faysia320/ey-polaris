@@ -28,14 +28,14 @@ $ARGUMENTS
 
 research.md에 "미해결 질문"이 남아 있으면 구현을 시작하기 전에 **AskUserQuestion 도구**로 해소하세요.
 
-## 2단계: TodoWrite로 작업 계획 등록
+## 2단계: 작업 추적 도구로 계획 등록
 
-코드를 수정하기 **전에** `TodoWrite` 도구를 호출하여 research.md의 Action Items를 todo 항목으로 등록하세요.
+코드를 수정하기 **전에** 세션이 제공하는 작업 추적 도구(`TodoWrite`, 또는 세션에 따라 `TaskCreate`/`TaskUpdate`)를 호출하여 research.md의 Action Items를 todo 항목으로 등록하세요. 도구가 무엇인지는 현재 사용 가능한 도구 목록에서 확인합니다.
 
-- 각 항목: `content`(명령형), `activeForm`(진행형), `status: "pending"`
-- 작업 시작 시 해당 항목을 `in_progress`로, 완료 시 `completed`로 **즉시** 갱신 (TodoWrite 재호출)
+- 각 항목: 내용(명령형)과 진행형 표시(activeForm)를 포함해 등록
+- 작업 시작 시 해당 항목을 `in_progress`로, 완료 시 `completed`로 **즉시** 갱신 (도구 재호출)
 - `in_progress` 항목은 한 번에 **1개만** 유지
-- 마크다운 체크박스를 텍스트로 출력하는 것은 todo 등록이 아닙니다. 반드시 TodoWrite **도구를 호출**해야 합니다.
+- 마크다운 체크박스를 텍스트로 출력하는 것은 todo 등록이 아닙니다. 반드시 작업 추적 **도구를 호출**해야 합니다.
 
 ## 3단계: 구현 규칙
 
