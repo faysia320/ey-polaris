@@ -1,2 +1,27 @@
 # Claude Code 로컬 전용 설정 (개인 권한 설정 — 커밋 금지)
 .claude/settings.local.json
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+*.local
+
+# Python / Backend
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 환경 변수 / 비밀
+.env
+.env.*
+!.env.example
+
+# 에디터 / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

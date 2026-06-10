@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: polaris
+      POSTGRES_PASSWORD: polaris
+      POSTGRES_DB: polaris
+    volumes:
+      # postgres:18 이미지는 볼륨 마운트 지점이 /var/lib/postgresql 로 변경됨 (data 하위 아님)
+      - polaris-db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U polaris -d polaris"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://polaris:polaris@db:5432/polaris
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000" # OpenAPI 문서(/docs) 직접 접근용
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+volumes:
+  polaris-db-data:

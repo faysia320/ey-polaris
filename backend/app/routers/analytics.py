@@ -1,0 +1,149 @@
+from datetime import date
+
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import case, func, select
+from sqlalchemy.orm import Session, selectinload
+
+from app import models, schemas
+from app.database import get_db
+from app.routers.transactions import _to_out as transaction_to_out
+
+router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+
+def _month_range(month: str) -> tuple[date, date]:
+    year, mon = int(month[:4]), int(month[5:7])
+    start = date(year, mon, 1)
+    end = date(year + 1, 1, 1) if mon == 12 else date(year, mon + 1, 1)
+    return start, end
+
+
+def _signed_amount():
+    """수입은 +, 지출은 - 로 부호를 붙인 금액 표현식."""
+    return case(
+        (models.Transaction.kind == "income", models.Transaction.amount),
+        else_=-models.Transaction.amount,
+    )
+
+
+@router.get("/dashboard", response_model=schemas.DashboardOut)
+def dashboard(
+    month: str = Query(pattern=schemas.YEAR_MONTH_PATTERN),
+    db: Session = Depends(get_db),
+):
+    start, end = _month_range(month)
+    in_month = (models.Transaction.date >= start) & (models.Transaction.date < end)
+
+    def month_total(kind: str) -> int:
+        return db.scalar(
+            select(func.coalesce(func.sum(models.Transaction.amount), 0)).where(
+                in_month, models.Transaction.kind == kind
+            )
+        )
+
+    expense_rows = db.execute(
+        select(
+            models.Category.id,
+            models.Category.name,
+            func.sum(models.Transaction.amount).label("amount"),
+        )
+        .join(models.Transaction, models.Transaction.category_id == models.Category.id)
+        .where(in_month, models.Transaction.kind == "expense")
+        .group_by(models.Category.id, models.Category.name)
+        .order_by(func.sum(models.Transaction.amount).desc())
+    ).all()
+    spent_by_category = {row.id: row.amount for row in expense_rows}
+
+    budget_rows = db.scalars(
+        select(models.Budget)
+        .options(selectinload(models.Budget.category))
+        .where(models.Budget.year_month == month)
+        .order_by(models.Budget.id)
+    ).all()
+    budgets = [
+        schemas.BudgetProgress(
+            category_id=b.category_id,
+            category_name=b.category.name,
+            amount=b.amount,
+            spent=spent_by_category.get(b.category_id, 0),
+        )
+        for b in budget_rows
+    ]
+
+    recent = db.scalars(
+        select(models.Transaction)
+        .options(
+            selectinload(models.Transaction.category),
+            selectinload(models.Transaction.account),
+            selectinload(models.Transaction.member),
+        )
+        .order_by(models.Transaction.date.desc(), models.Transaction.id.desc())
+        .limit(5)
+    ).all()
+
+    return schemas.DashboardOut(
+        month=month,
+        income_total=month_total("income"),
+        expense_total=month_total("expense"),
+        budget_total=sum(b.amount for b in budgets),
+        budget_spent=sum(b.spent for b in budgets),
+        budgets=budgets,
+        expense_by_category=[
+            schemas.CategoryAmount(category_id=row.id, category_name=row.name, amount=row.amount)
+            for row in expense_rows
+        ],
+        recent_transactions=[transaction_to_out(t) for t in recent],
+    )
+
+
+@router.get("/assets", response_model=schemas.AssetsOut)
+def assets(db: Session = Depends(get_db)):
+    accounts = db.scalars(select(models.Account).order_by(models.Account.id)).all()
+    net_by_account = dict(
+        db.execute(
+            select(models.Transaction.account_id, func.sum(_signed_amount())).group_by(
+                models.Transaction.account_id
+            )
+        ).all()
+    )
+    balances = [
+        schemas.AccountBalance(
+            id=a.id,
+            name=a.name,
+            type=a.type,
+            is_active=a.is_active,
+            balance=a.opening_balance + int(net_by_account.get(a.id, 0)),
+        )
+        for a in accounts
+    ]
+
+    # 월별 자산 추이: 개설 잔액 합 + 해당 월까지의 누적 순증감 (최근 12개월)
+    month_expr = func.to_char(models.Transaction.date, "YYYY-MM")
+    net_by_month = dict(
+        db.execute(select(month_expr, func.sum(_signed_amount())).group_by(month_expr)).all()
+    )
+    opening_total = sum(a.opening_balance for a in accounts)
+
+    today = date.today()
+    months: list[str] = []
+    year, mon = today.year, today.month
+    for _ in range(12):
+        months.append(f"{year:04d}-{mon:02d}")
+        mon -= 1
+        if mon == 0:
+            year, mon = year - 1, 12
+    months.reverse()
+
+    # 12개월 창 이전의 거래 누적분을 시작점에 반영
+    carried = sum(int(v) for m, v in net_by_month.items() if m < months[0])
+    trend: list[schemas.MonthlyPoint] = []
+    running = opening_total + carried
+    for m in months:
+        running += int(net_by_month.get(m, 0))
+        trend.append(schemas.MonthlyPoint(month=m, total=running))
+
+    return schemas.AssetsOut(
+        accounts=balances,
+        total=sum(b.balance for b in balances),
+        trend=trend,
+    )
