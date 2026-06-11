@@ -1,7 +1,7 @@
 from datetime import date as date_type
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 YEAR_MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
 
@@ -22,7 +22,7 @@ class MemberOut(MemberCreate):
 
 
 # ---------- Account ----------
-AccountType = Literal["bank", "cash", "card", "investment", "other"]
+AccountType = Literal["bank", "cash", "card", "investment", "stock", "real_estate", "other"]
 
 
 class AccountCreate(BaseModel):
@@ -84,6 +84,42 @@ class TransactionOut(TransactionCreate):
     member_name: str | None = None
 
 
+# ---------- AssetValuation ----------
+class ValuationUpsert(BaseModel):
+    date: date_type
+    value: int = Field(ge=0, description="KRW 정수(원) 평가액. 0 이상")
+
+    @field_validator("date")
+    @classmethod
+    def date_not_in_future(cls, v: date_type) -> date_type:
+        # 미래 평가액은 잔액(즉시 반영)과 추이(월말 기준)의 비일관을 만들므로 차단
+        if v > date_type.today():
+            raise ValueError("평가 기준일은 미래 날짜일 수 없습니다")
+        return v
+
+
+class ValuationOut(ValuationUpsert):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    account_id: int
+
+
+# ---------- Goal ----------
+class GoalCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    target_amount: int = Field(gt=0)
+    target_date: date_type | None = None
+
+
+class GoalUpdate(GoalCreate):
+    pass
+
+
+class GoalOut(GoalCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+
+
 # ---------- Budget ----------
 class BudgetCreate(BaseModel):
     year_month: str = Field(pattern=YEAR_MONTH_PATTERN)
@@ -132,6 +168,8 @@ class AccountBalance(BaseModel):
     type: str
     is_active: bool
     balance: int
+    # 잔액이 평가액 기반이면 해당 평가 기준일, 아니면 None
+    valued_at: date_type | None = None
 
 
 class MonthlyPoint(BaseModel):

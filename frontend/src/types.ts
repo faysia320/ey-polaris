@@ -1,4 +1,11 @@
-export type AccountType = 'bank' | 'cash' | 'card' | 'investment' | 'other'
+export type AccountType =
+  | 'bank'
+  | 'cash'
+  | 'card'
+  | 'investment'
+  | 'stock'
+  | 'real_estate'
+  | 'other'
 export type TransactionKind = 'income' | 'expense'
 export type CategoryNature = 'fixed' | 'variable'
 
@@ -85,6 +92,33 @@ export interface AccountBalance {
   type: AccountType
   is_active: boolean
   balance: number
+  /** 잔액이 평가액 기반이면 해당 평가 기준일(YYYY-MM-DD), 아니면 null */
+  valued_at: string | null
+}
+
+export interface Valuation {
+  id: number
+  account_id: number
+  date: string
+  value: number
+}
+
+export interface ValuationInput {
+  date: string
+  value: number
+}
+
+export interface Goal {
+  id: number
+  name: string
+  target_amount: number
+  target_date: string | null
+}
+
+export interface GoalInput {
+  name: string
+  target_amount: number
+  target_date: string | null
 }
 
 export interface MonthlyPoint {

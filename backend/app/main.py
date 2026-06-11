@@ -1,7 +1,16 @@
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import accounts, analytics, budgets, categories, members, transactions
+from app.routers import (
+    accounts,
+    analytics,
+    budgets,
+    categories,
+    goals,
+    members,
+    transactions,
+    valuations,
+)
 
 app = FastAPI(
     title="으니영이의 북극성 API",
@@ -22,7 +31,9 @@ api.include_router(members.router)
 api.include_router(accounts.router)
 api.include_router(categories.router)
 api.include_router(transactions.router)
+api.include_router(valuations.router)
 api.include_router(budgets.router)
+api.include_router(goals.router)
 api.include_router(analytics.router)
 
 

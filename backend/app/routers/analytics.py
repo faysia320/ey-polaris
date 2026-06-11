@@ -106,23 +106,62 @@ def assets(db: Session = Depends(get_db)):
             )
         ).all()
     )
-    balances = [
-        schemas.AccountBalance(
-            id=a.id,
-            name=a.name,
-            type=a.type,
-            is_active=a.is_active,
-            balance=a.opening_balance + int(net_by_account.get(a.id, 0)),
-        )
-        for a in accounts
-    ]
 
-    # 월별 자산 추이: 개설 잔액 합 + 해당 월까지의 누적 순증감 (최근 12개월)
+    # 계정·월별 최신 평가액만 적재 (평가 이력이 길어도 계정당 월 1행).
+    # 평가액이 1건 이상 있는 계정의 잔액은 최신 평가액 단독으로 계산한다
+    # (평가일 이후 거래는 가산하지 않음).
+    valuation_month = func.to_char(models.AssetValuation.date, "YYYY-MM")
+    ranked = select(
+        models.AssetValuation.account_id,
+        valuation_month.label("month"),
+        models.AssetValuation.date,
+        models.AssetValuation.value,
+        func.row_number()
+        .over(
+            partition_by=(models.AssetValuation.account_id, valuation_month),
+            order_by=models.AssetValuation.date.desc(),
+        )
+        .label("rn"),
+    ).subquery()
+    # 계정별 (월, 기준일, 평가액) 목록 — 월 오름차순
+    monthly_valuations: dict[int, list[tuple[str, date, int]]] = {}
+    for account_id, m, valued_on, value in db.execute(
+        select(ranked.c.account_id, ranked.c.month, ranked.c.date, ranked.c.value)
+        .where(ranked.c.rn == 1)
+        .order_by(ranked.c.account_id, ranked.c.month)
+    ).all():
+        monthly_valuations.setdefault(account_id, []).append((m, valued_on, value))
+
+    balances: list[schemas.AccountBalance] = []
+    for a in accounts:
+        history = monthly_valuations.get(a.id, [])
+        if history:
+            _, valued_at, balance = history[-1]
+        else:
+            balance, valued_at = a.opening_balance + int(net_by_account.get(a.id, 0)), None
+        balances.append(
+            schemas.AccountBalance(
+                id=a.id,
+                name=a.name,
+                type=a.type,
+                is_active=a.is_active,
+                balance=balance,
+                valued_at=valued_at,
+            )
+        )
+
+    # 월별 자산 추이 (최근 12개월): 계정별로
+    #  - 해당 월 말 이전의 최신 평가액이 있으면 그 평가액
+    #  - 없으면 개설 잔액 + 해당 월까지의 누적 순증감 (기존 방식)
     month_expr = func.to_char(models.Transaction.date, "YYYY-MM")
-    net_by_month = dict(
-        db.execute(select(month_expr, func.sum(_signed_amount())).group_by(month_expr)).all()
-    )
-    opening_total = sum(a.opening_balance for a in accounts)
+    account_month_net: dict[tuple[int, str], int] = {
+        (account_id, m): int(total)
+        for account_id, m, total in db.execute(
+            select(models.Transaction.account_id, month_expr, func.sum(_signed_amount())).group_by(
+                models.Transaction.account_id, month_expr
+            )
+        ).all()
+    }
 
     today = date.today()
     months: list[str] = []
@@ -134,13 +173,38 @@ def assets(db: Session = Depends(get_db)):
             year, mon = year - 1, 12
     months.reverse()
 
-    # 12개월 창 이전의 거래 누적분을 시작점에 반영
-    carried = sum(int(v) for m, v in net_by_month.items() if m < months[0])
+    # 12개월 창 이전의 거래 누적분을 계정별 시작점에 반영
+    running_by_account = {
+        a.id: a.opening_balance
+        + sum(v for (acc_id, m), v in account_month_net.items() if acc_id == a.id and m < months[0])
+        for a in accounts
+    }
+    # 계정별 평가액 포인터 워크: 창 시작 이전의 최신 평가액을 시작점으로 두고
+    # 월을 진행하며 최신값을 갱신한다 (월마다 이력 전체를 재탐색하지 않음)
+    val_idx: dict[int, int] = {}
+    last_value: dict[int, int | None] = {}
+    for a in accounts:
+        history = monthly_valuations.get(a.id, [])
+        i = 0
+        while i < len(history) and history[i][0] < months[0]:
+            i += 1
+        val_idx[a.id] = i
+        last_value[a.id] = history[i - 1][2] if i > 0 else None
+
     trend: list[schemas.MonthlyPoint] = []
-    running = opening_total + carried
     for m in months:
-        running += int(net_by_month.get(m, 0))
-        trend.append(schemas.MonthlyPoint(month=m, total=running))
+        total = 0
+        for a in accounts:
+            running_by_account[a.id] += account_month_net.get((a.id, m), 0)
+            history = monthly_valuations.get(a.id, [])
+            i = val_idx[a.id]
+            while i < len(history) and history[i][0] <= m:
+                last_value[a.id] = history[i][2]
+                i += 1
+            val_idx[a.id] = i
+            value = last_value[a.id]
+            total += value if value is not None else running_by_account[a.id]
+        trend.append(schemas.MonthlyPoint(month=m, total=total))
 
     return schemas.AssetsOut(
         accounts=balances,

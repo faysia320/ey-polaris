@@ -67,6 +67,37 @@ class Transaction(Base):
     member: Mapped["Member | None"] = relationship()
 
 
+class AssetValuation(Base):
+    """주식/부동산 등 시세형 자산의 날짜별 평가액 스냅샷. (계정, 날짜) 유니크.
+
+    평가액이 1건 이상 있는 계정의 잔액은 최신 평가액 단독으로 계산한다
+    (최신 평가일 이후 거래는 잔액에 가산하지 않음 — 다음 평가액 갱신 시 반영).
+    """
+
+    __tablename__ = "asset_valuations"
+    __table_args__ = (
+        UniqueConstraint("account_id", "date", name="uq_asset_valuations_account_date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    date: Mapped[date_type] = mapped_column(Date, index=True)
+    value: Mapped[int] = mapped_column(BigInteger)  # KRW 정수(원), 0 이상
+
+    account: Mapped["Account"] = relationship()
+
+
+class Goal(Base):
+    """목표 금액. 달성률은 현재 총자산 ÷ 목표금액으로 계산한다 (프론트 표시)."""
+
+    __tablename__ = "goals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    target_amount: Mapped[int] = mapped_column(BigInteger)  # KRW 정수(원), 양수
+    target_date: Mapped[date_type | None] = mapped_column(Date, nullable=True)
+
+
 class Budget(Base):
     """월별 카테고리 예산. (연월, 카테고리) 유니크."""
 

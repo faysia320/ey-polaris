@@ -37,6 +37,8 @@ const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
   { value: 'cash', label: '현금' },
   { value: 'card', label: '카드' },
   { value: 'investment', label: '투자' },
+  { value: 'stock', label: '주식' },
+  { value: 'real_estate', label: '부동산' },
   { value: 'other', label: '기타' },
 ]
 

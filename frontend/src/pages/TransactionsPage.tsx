@@ -8,7 +8,16 @@ import {
   type ColumnDef,
   type SortingState,
 } from '@tanstack/react-table'
-import { ArrowUpDown, Pencil, Plus, Trash2 } from 'lucide-react'
+import {
+  ArrowUpDown,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  Plus,
+  Table2,
+  Trash2,
+} from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -37,7 +46,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { formatKRW, todayISO } from '@/lib/format'
+import { TransactionCalendar } from '@/components/transactions/TransactionCalendar'
+import { addMonths, currentMonth, formatKRW, todayISO } from '@/lib/format'
 import { useMasterDataStore } from '@/stores/masterData'
 import { useTransactionStore } from '@/stores/transactions'
 import type { Transaction, TransactionKind } from '@/types'
@@ -66,6 +76,8 @@ export function TransactionsPage() {
   const { items, filters, fetch, setFilters, create, update, remove } = useTransactionStore()
   const { categories, accounts, members, loaded, fetchAll } = useMasterDataStore()
 
+  const [view, setView] = useState<'table' | 'calendar'>('table')
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [sorting, setSorting] = useState<SortingState>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
@@ -78,9 +90,33 @@ export function TransactionsPage() {
     if (!loaded) fetchAll().catch((e: Error) => setPageError(e.message))
   }, [fetch, fetchAll, loaded])
 
+  // 캘린더 뷰는 항상 특정 월을 기준으로 한다 (월 필터가 비어 있으면 현재 월)
+  const calendarMonth = filters.month ?? currentMonth()
+  // 선택일이 표시 중인 월을 벗어나면 상세 목록을 숨긴다
+  const dayTransactions =
+    selectedDate && selectedDate.startsWith(calendarMonth)
+      ? items.filter((t) => t.date === selectedDate)
+      : null
+
+  const switchView = (next: 'table' | 'calendar') => {
+    setView(next)
+    if (next === 'calendar' && !filters.month) {
+      setFilters({ month: currentMonth() }).catch((e: Error) => setPageError(e.message))
+    }
+  }
+
+  const moveCalendarMonth = (delta: number) => {
+    setSelectedDate(null)
+    setFilters({ month: addMonths(calendarMonth, delta) }).catch((e: Error) =>
+      setPageError(e.message),
+    )
+  }
+
   const openCreate = () => {
     setEditing(null)
-    setForm(emptyForm())
+    const base = emptyForm()
+    if (view === 'calendar' && selectedDate) base.date = selectedDate
+    setForm(base)
     setFormError(null)
     setDialogOpen(true)
   }
@@ -226,9 +262,27 @@ export function TransactionsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">지출/수입 내역</h1>
-        <Button onClick={openCreate}>
-          <Plus /> 거래 추가
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border p-0.5">
+            <Button
+              variant={view === 'table' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => switchView('table')}
+            >
+              <Table2 /> 테이블
+            </Button>
+            <Button
+              variant={view === 'calendar' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => switchView('calendar')}
+            >
+              <CalendarDays /> 캘린더
+            </Button>
+          </div>
+          <Button onClick={openCreate}>
+            <Plus /> 거래 추가
+          </Button>
+        </div>
       </div>
 
       {pageError && <p className="text-sm text-destructive">{pageError}</p>}
@@ -293,65 +347,126 @@ export function TransactionsPage() {
         </div>
       </div>
 
-      <div className="rounded-lg border">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((hg) => (
-              <TableRow key={hg.id}>
-                {hg.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
+      {view === 'table' ? (
+        <>
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                {table.getHeaderGroups().map((hg) => (
+                  <TableRow key={hg.id}>
+                    {hg.headers.map((header) => (
+                      <TableHead key={header.id}>
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(header.column.columnDef.header, header.getContext())}
+                      </TableHead>
+                    ))}
+                  </TableRow>
                 ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={columns.length} className="py-10 text-center text-muted-foreground">
-                  조건에 맞는 거래가 없습니다.
-                </TableCell>
-              </TableRow>
-            ) : (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+              </TableHeader>
+              <TableBody>
+                {table.getRowModel().rows.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={columns.length}
+                      className="py-10 text-center text-muted-foreground"
+                    >
+                      조건에 맞는 거래가 없습니다.
                     </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                  </TableRow>
+                ) : (
+                  table.getRowModel().rows.map((row) => (
+                    <TableRow key={row.id}>
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
 
-      <div className="flex items-center justify-end gap-2">
-        <span className="text-sm text-muted-foreground">
-          {table.getState().pagination.pageIndex + 1} / {Math.max(table.getPageCount(), 1)}{' '}
-          페이지
-        </span>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => table.previousPage()}
-          disabled={!table.getCanPreviousPage()}
-        >
-          이전
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => table.nextPage()}
-          disabled={!table.getCanNextPage()}
-        >
-          다음
-        </Button>
-      </div>
+          <div className="flex items-center justify-end gap-2">
+            <span className="text-sm text-muted-foreground">
+              {table.getState().pagination.pageIndex + 1} / {Math.max(table.getPageCount(), 1)}{' '}
+              페이지
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+            >
+              이전
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+            >
+              다음
+            </Button>
+          </div>
+        </>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex items-center justify-center gap-2">
+            <Button variant="outline" size="icon" onClick={() => moveCalendarMonth(-1)}>
+              <ChevronLeft />
+            </Button>
+            <span className="w-24 text-center font-medium tabular-nums">{calendarMonth}</span>
+            <Button variant="outline" size="icon" onClick={() => moveCalendarMonth(1)}>
+              <ChevronRight />
+            </Button>
+          </div>
+          <TransactionCalendar
+            month={calendarMonth}
+            transactions={items}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+          />
+          {dayTransactions && (
+            <div className="space-y-2 rounded-lg border p-4">
+              <p className="text-sm font-medium">{selectedDate} 거래</p>
+              {dayTransactions.length === 0 && (
+                <p className="text-sm text-muted-foreground">이 날의 거래가 없습니다.</p>
+              )}
+              {dayTransactions.map((t) => (
+                <div key={t.id} className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <Badge variant={t.kind === 'income' ? 'secondary' : 'outline'}>
+                      {t.kind === 'income' ? '수입' : '지출'}
+                    </Badge>
+                    <span>{t.category_name}</span>
+                    <span className="text-xs text-muted-foreground">{t.account_name}</span>
+                    {t.memo && <span className="text-xs text-muted-foreground">{t.memo}</span>}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className={t.kind === 'income' ? 'text-emerald-400' : 'text-rose-400'}>
+                      {t.kind === 'income' ? '+' : '-'}
+                      {formatKRW(t.amount)}
+                    </span>
+                    <Button variant="ghost" size="icon-sm" onClick={() => openEdit(t)}>
+                      <Pencil />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => remove(t.id).catch((e: Error) => setPageError(e.message))}
+                    >
+                      <Trash2 className="text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
