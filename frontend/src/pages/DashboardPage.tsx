@@ -30,18 +30,27 @@ export function DashboardPage() {
     fetchDashboard(month).catch((e: Error) => setError(e.message))
   }, [month, fetchDashboard])
 
-  const donutOption = useMemo<EChartsOption>(() => {
+  const treemapOption = useMemo<EChartsOption>(() => {
     const data = dashboard?.expense_by_category ?? []
     return {
       tooltip: { trigger: 'item', valueFormatter: (v) => formatKRW(Number(v)) },
-      legend: { bottom: 0, textStyle: { color: '#a1a1aa' } },
       series: [
         {
           name: '카테고리별 지출',
-          type: 'pie',
-          radius: ['45%', '70%'],
-          itemStyle: { borderRadius: 6, borderColor: '#18181b', borderWidth: 2 },
-          label: { color: '#e4e4e7', formatter: '{b}' },
+          type: 'treemap',
+          left: 0,
+          top: 0,
+          right: 0,
+          bottom: 0,
+          // 단일 레벨 데이터 — 줌/드릴다운·브레드크럼은 혼란만 주므로 비활성화
+          roam: false,
+          nodeClick: false,
+          breadcrumb: { show: false },
+          itemStyle: { borderRadius: 6, borderColor: '#18181b', borderWidth: 2, gapWidth: 2 },
+          label: {
+            color: '#e4e4e7',
+            formatter: (p) => `${p.name}\n${formatKRW(Number(p.value))}`,
+          },
           data: data.map((d) => ({ name: d.category_name, value: d.amount })),
         },
       ],
@@ -127,7 +136,7 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent>
             {(dashboard?.expense_by_category.length ?? 0) > 0 ? (
-              <EChart option={donutOption} height={320} />
+              <EChart option={treemapOption} height={320} />
             ) : (
               <p className="py-12 text-center text-sm text-muted-foreground">
                 이번 달 지출이 아직 없어요. 맑은 밤하늘이네요 🌌
