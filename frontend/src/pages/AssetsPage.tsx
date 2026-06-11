@@ -20,7 +20,7 @@ import { api } from '@/lib/api'
 import { formatKRW, todayISO } from '@/lib/format'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { useGoalStore } from '@/stores/goals'
-import type { AccountBalance, AccountType, Goal } from '@/types'
+import type { AccountBalance, AccountType, Goal, Valuation } from '@/types'
 
 const ACCOUNT_TYPE_LABEL: Record<AccountType, string> = {
   bank: '은행',
@@ -54,6 +54,7 @@ export function AssetsPage() {
   const [valuationDate, setValuationDate] = useState(todayISO())
   const [valuationValue, setValuationValue] = useState('')
   const [valuationError, setValuationError] = useState<string | null>(null)
+  const [valuationHistory, setValuationHistory] = useState<Valuation[]>([])
 
   // 목표 추가/수정 다이얼로그
   const [goalDialogOpen, setGoalDialogOpen] = useState(false)
@@ -90,15 +91,37 @@ export function AssetsPage() {
     }
   }, [assets])
 
+  // 이력 조회/삭제 실패는 다이얼로그 내 에러로만 표시한다 (페이지 전역으로 흘리지 않기)
+  const loadValuationHistory = (accountId: number) =>
+    api
+      .get<Valuation[]>(`/accounts/${accountId}/valuations`)
+      .then(setValuationHistory)
+      .catch((e: Error) => setValuationError(`이력을 불러오지 못했습니다: ${e.message}`))
+
   const openValuation = (account: AccountBalance) => {
     setValuationTarget(account)
     setValuationDate(todayISO())
     setValuationValue(account.valued_at ? String(account.balance) : '')
     setValuationError(null)
+    setValuationHistory([])
+    void loadValuationHistory(account.id)
+  }
+
+  const deleteValuation = async (valuationId: number) => {
+    if (!valuationTarget) return
+    try {
+      await api.delete(`/accounts/${valuationTarget.id}/valuations/${valuationId}`)
+      setValuationError(null)
+      await Promise.all([loadValuationHistory(valuationTarget.id), fetchAssets()])
+    } catch (e) {
+      setValuationError((e as Error).message)
+    }
   }
 
   const submitValuation = async () => {
     if (!valuationTarget) return
+    // Number('') === 0 이므로 변환 전에 빈 입력을 거른다 (명시적 0원 입력은 허용)
+    if (valuationValue.trim() === '') return setValuationError('평가액을 입력해주세요')
     const value = Number(valuationValue)
     if (!valuationDate) return setValuationError('기준일을 입력해주세요')
     if (valuationDate > todayISO()) return setValuationError('기준일은 미래 날짜일 수 없습니다')
@@ -319,6 +342,31 @@ export function AssetsPage() {
                 onChange={(e) => setValuationValue(e.target.value)}
               />
             </div>
+            {valuationHistory.length > 0 && (
+              <div className="space-y-1">
+                <Label>평가 이력</Label>
+                <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
+                  {valuationHistory.map((v) => (
+                    <div key={v.id} className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">{v.date}</span>
+                      <span className="flex items-center gap-1">
+                        {formatKRW(v.value)}
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => deleteValuation(v.id)}
+                        >
+                          <Trash2 className="text-destructive" />
+                        </Button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  이력을 모두 삭제하면 잔액이 거래 기반 계산으로 돌아가요.
+                </p>
+              </div>
+            )}
             {valuationError && <p className="text-sm text-destructive">{valuationError}</p>}
           </div>
           <DialogFooter>
