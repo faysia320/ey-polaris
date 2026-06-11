@@ -297,14 +297,14 @@ export function TransactionsPage() {
   const runImport = async () => {
     if (!importFile) return setImportError('업로드할 .xlsx 파일을 선택해주세요')
     if (!importMonth) return setImportError('가져올 월을 선택해주세요')
-    if (!importMemberId) return setImportError('새 계정의 기본 소유자를 선택해주세요')
+    if (!importMemberId) return setImportError('업로드할 구성원을 선택해주세요')
     setImporting(true)
     setImportError(null)
     try {
       const body = new FormData()
       body.append('file', importFile)
       body.append('month', importMonth)
-      body.append('default_member_id', importMemberId)
+      body.append('member_id', importMemberId)
       const result = await api.upload<ImportResult>('/transactions/import', body)
       setImportResult(result)
       // 새 카테고리/계정이 생겼을 수 있으니 기준정보까지 재조회
@@ -793,7 +793,7 @@ export function TransactionsPage() {
                 />
               </div>
               <div className="space-y-1">
-                <Label>새 계정 기본 소유자</Label>
+                <Label>구성원</Label>
                 <Select value={importMemberId || undefined} onValueChange={setImportMemberId}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="선택" />
@@ -807,12 +807,13 @@ export function TransactionsPage() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  엑셀에 처음 등장하는 자산 계정이 자동 생성될 때 이 구성원의 소유가 돼요.
+                  업로드되는 모든 거래가 이 구성원의 거래로 기록돼요. 엑셀에 처음 등장하는
+                  자산 계정도 이 구성원의 소유로 생성돼요.
                 </p>
               </div>
               <p className="text-xs text-muted-foreground">
-                해당 월에 이전에 업로드한 내역이 있으면 삭제 후 다시 등록돼요. 직접 입력한
-                거래는 그대로 유지됩니다.
+                해당 월에 같은 구성원으로 업로드한 내역이 있으면 삭제 후 다시 등록돼요. 다른
+                구성원의 업로드 내역과 직접 입력한 거래는 그대로 유지됩니다.
               </p>
               {importError && <p className="text-sm text-destructive">{importError}</p>}
             </div>

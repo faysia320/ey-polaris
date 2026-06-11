@@ -1,7 +1,7 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app import excel_import, models, schemas
@@ -116,17 +116,20 @@ def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
 def import_transactions(
     file: UploadFile = File(description="뱅크샐러드 내보내기 .xlsx 파일"),
     month: str = Form(pattern=schemas.YEAR_MONTH_PATTERN),
-    default_member_id: int = Form(description="자동 생성되는 새 계정의 소유자 구성원 id"),
+    member_id: int = Form(description="업로드되는 모든 거래(및 자동 생성 계정)에 지정할 구성원 id"),
     db: Session = Depends(get_db),
 ):
     """엑셀 "가계부 내역" 시트에서 지정 월만 가져온다.
 
-    같은 월의 기존 가져오기(source='import') 거래는 삭제 후 다시 등록하므로
-    재업로드해도 중복되지 않는다. 수동 입력 거래는 보존된다.
+    구성원별 엑셀 파일을 따로 업로드하는 워크플로 — 모든 거래는 member_id
+    소유로 기록한다. 같은 월·같은 구성원의 기존 가져오기(source='import')
+    거래는 삭제 후 다시 등록하므로 재업로드해도 중복되지 않으며, 다른
+    구성원의 가져오기 거래와 수동 입력 거래는 보존된다. 구성원이 비어 있는
+    과거 가져오기 거래도 함께 정리된다(구성원 지정 이전 업로드의 잔재).
     전 과정이 단일 트랜잭션이라 실패 시 기존 데이터가 유지된다.
-    엑셀에는 소유자 정보가 없으므로 새로 생성되는 계정은 default_member_id 소유가 된다.
+    새로 생성되는 계정도 member_id 소유가 된다.
     """
-    get_or_404(db, models.Member, default_member_id, "구성원")
+    get_or_404(db, models.Member, member_id, "구성원")
     try:
         parsed, skipped, month_rows = excel_import.parse_ledger(file.file.read(), month)
     except excel_import.ExcelFormatError as exc:
@@ -141,6 +144,10 @@ def import_transactions(
             models.Transaction.date >= start,
             models.Transaction.date < end,
             models.Transaction.source == "import",
+            or_(
+                models.Transaction.member_id == member_id,
+                models.Transaction.member_id.is_(None),
+            ),
         )
     ).rowcount
 
@@ -170,7 +177,7 @@ def import_transactions(
                 type=excel_import.guess_account_type(row.account_name),
                 opening_balance=0,
                 is_active=True,
-                member_id=default_member_id,
+                member_id=member_id,
             )
             db.add(account)
             db.flush()
@@ -184,7 +191,7 @@ def import_transactions(
                 kind=row.kind,
                 category_id=category.id,
                 account_id=account.id,
-                member_id=None,
+                member_id=member_id,
                 memo=row.memo,
                 source="import",
             )
