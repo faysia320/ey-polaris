@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { api } from '@/lib/api'
@@ -356,12 +357,11 @@ export function AssetsPage() {
           <div className="space-y-4">
             <div className="space-y-1">
               <Label htmlFor="val-date">기준일</Label>
-              <Input
+              <DatePicker
                 id="val-date"
-                type="date"
-                max={todayISO()}
+                disableFuture
                 value={valuationDate}
-                onChange={(e) => setValuationDate(e.target.value)}
+                onChange={setValuationDate}
               />
             </div>
             <div className="space-y-1">
@@ -442,11 +442,12 @@ export function AssetsPage() {
             </div>
             <div className="space-y-1">
               <Label htmlFor="goal-date">목표일 (선택)</Label>
-              <Input
+              <DatePicker
                 id="goal-date"
-                type="date"
+                placeholder="목표일 없음"
+                clearable
                 value={goalDate}
-                onChange={(e) => setGoalDate(e.target.value)}
+                onChange={setGoalDate}
               />
             </div>
             {goalError && <p className="text-sm text-destructive">{goalError}</p>}

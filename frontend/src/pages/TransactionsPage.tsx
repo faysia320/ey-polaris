@@ -30,8 +30,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { MonthPicker } from '@/components/ui/month-picker'
 import {
   Select,
   SelectContent,
@@ -361,13 +363,14 @@ export function TransactionsPage() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1">
           <Label htmlFor="filter-month">조회 월</Label>
-          <Input
+          <MonthPicker
             id="filter-month"
-            type="month"
             className="w-40"
+            placeholder="전체 기간"
+            clearable
             value={filters.month ?? ''}
-            onChange={(e) =>
-              setFilters({ month: e.target.value || null }).catch((err: Error) =>
+            onChange={(month) =>
+              setFilters({ month: month || null }).catch((err: Error) =>
                 setPageError(err.message),
               )
             }
@@ -595,11 +598,10 @@ export function TransactionsPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label htmlFor="tx-date">날짜</Label>
-                <Input
+                <DatePicker
                   id="tx-date"
-                  type="date"
                   value={form.date}
-                  onChange={(e) => setForm({ ...form, date: e.target.value })}
+                  onChange={(date) => setForm({ ...form, date })}
                 />
               </div>
               <div className="space-y-1">
@@ -784,12 +786,11 @@ export function TransactionsPage() {
               </div>
               <div className="space-y-1">
                 <Label htmlFor="import-month">가져올 월</Label>
-                <Input
+                <MonthPicker
                   id="import-month"
-                  type="month"
                   className="w-40"
                   value={importMonth}
-                  onChange={(e) => setImportMonth(e.target.value)}
+                  onChange={setImportMonth}
                 />
               </div>
               <div className="space-y-1">
