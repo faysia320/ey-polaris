@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { Fragment, useEffect, useState } from 'react'
+import { ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -52,9 +52,33 @@ function CategoriesTab() {
   const [kind, setKind] = useState<TransactionKind>('expense')
   const [nature, setNature] = useState<CategoryNature>('variable')
   const [error, setError] = useState<string | null>(null)
+  // 접힌 그룹의 (kind, major) 키 집합 — 비어 있으면 전체 펼침
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
   // 대분류 입력 자동완성용 — 같은 구분의 기존 대분류 목록
   const majorOptions = [...new Set(categories.filter((c) => c.kind === kind).map((c) => c.major))]
+
+  // 백엔드가 kind → major → minor 순으로 정렬해 주므로 연속 구간을 그대로 그룹으로 묶는다
+  const groups: { key: string; major: string; kind: TransactionKind; items: Category[] }[] = []
+  for (const c of categories) {
+    const last = groups[groups.length - 1]
+    if (last && last.major === c.major && last.kind === c.kind) {
+      last.items.push(c)
+    } else {
+      groups.push({ key: `${c.kind}:${c.major}`, major: c.major, kind: c.kind, items: [c] })
+    }
+  }
+
+  const toggleGroup = (key: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
 
   const openCreate = () => {
     setEditing(null)
@@ -119,30 +143,50 @@ function CategoriesTab() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {categories.map((c, i) => (
-              <TableRow key={c.id}>
-                <TableCell>
-                  {/* 같은 대분류가 연속되면 첫 행에만 표시해 그룹처럼 보이게 한다 */}
-                  {i > 0 &&
-                  categories[i - 1].major === c.major &&
-                  categories[i - 1].kind === c.kind ? (
-                    <span className="text-muted-foreground">·</span>
-                  ) : (
-                    c.major
-                  )}
-                </TableCell>
-                <TableCell>{c.minor}</TableCell>
-                <TableCell>
-                  <Badge variant={c.kind === 'income' ? 'secondary' : 'outline'}>
-                    {c.kind === 'income' ? '수입' : '지출'}
-                  </Badge>
-                </TableCell>
-                <TableCell>{c.nature === 'fixed' ? '🛸 정기 궤도 (고정)' : '☄️ 유성우 (변동)'}</TableCell>
-                <TableCell>
-                  <RowActions onEdit={() => openEdit(c)} onDelete={() => deleteCategory(c.id)} />
-                </TableCell>
-              </TableRow>
-            ))}
+            {groups.map((g) => {
+              const isCollapsed = collapsed.has(g.key)
+              return (
+                <Fragment key={g.key}>
+                  <TableRow
+                    className="cursor-pointer bg-muted/50 hover:bg-muted"
+                    onClick={() => toggleGroup(g.key)}
+                  >
+                    <TableCell colSpan={5}>
+                      <span className="flex items-center gap-2 font-medium">
+                        {isCollapsed ? (
+                          <ChevronRight className="size-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronDown className="size-4 text-muted-foreground" />
+                        )}
+                        {g.major}
+                        <Badge variant={g.kind === 'income' ? 'secondary' : 'outline'}>
+                          {g.kind === 'income' ? '수입' : '지출'}
+                        </Badge>
+                        <span className="text-xs font-normal text-muted-foreground">
+                          소분류 {g.items.length}개
+                        </span>
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                  {!isCollapsed &&
+                    g.items.map((c) => (
+                      <TableRow key={c.id}>
+                        <TableCell />
+                        <TableCell>{c.minor}</TableCell>
+                        <TableCell>
+                          <Badge variant={c.kind === 'income' ? 'secondary' : 'outline'}>
+                            {c.kind === 'income' ? '수입' : '지출'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{c.nature === 'fixed' ? '🛸 정기 궤도 (고정)' : '☄️ 유성우 (변동)'}</TableCell>
+                        <TableCell>
+                          <RowActions onEdit={() => openEdit(c)} onDelete={() => deleteCategory(c.id)} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                </Fragment>
+              )
+            })}
           </TableBody>
         </Table>
       </div>
