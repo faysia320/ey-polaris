@@ -94,10 +94,6 @@ metadata:
 - `git push origin <현재 브랜치>` 실행
 - 거부(rejected)되면 강제 푸시하지 말고, `git fetch` 후 상태를 보고하고 사용자 지시를 기다립니다.
 
-### 6단계: graphify 갱신 (조건부)
-- 프로젝트 루트에 `graphify-out/graph.json`이 **없으면 건너뜁니다**.
-- 있으면: 커밋 출력에 `[graphify]` 메시지가 없을 때만 `graphify update .`를 실행합니다. 실패해도 커밋/푸시 결과에는 영향 없음 — 경고만 보고합니다.
-
 ## 주의사항
 
 1. **민감 파일 제외**: `.env`, `credentials.json`, 키/토큰 파일은 스테이징 금지. diff에 API 키·비밀번호로 보이는 문자열이 있으면 커밋을 중단하고 보고
