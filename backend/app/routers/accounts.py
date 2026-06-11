@@ -16,6 +16,7 @@ def list_accounts(db: Session = Depends(get_db)):
 
 @router.post("", response_model=schemas.AccountOut, status_code=201)
 def create_account(payload: schemas.AccountCreate, db: Session = Depends(get_db)):
+    get_or_404(db, models.Member, payload.member_id, "구성원")
     account = models.Account(**payload.model_dump())
     db.add(account)
     commit_or_conflict(db, f"이미 존재하는 계정 이름입니다: {payload.name}")
@@ -25,6 +26,7 @@ def create_account(payload: schemas.AccountCreate, db: Session = Depends(get_db)
 @router.put("/{account_id}", response_model=schemas.AccountOut)
 def update_account(account_id: int, payload: schemas.AccountUpdate, db: Session = Depends(get_db)):
     account = get_or_404(db, models.Account, account_id, "자산 계정")
+    get_or_404(db, models.Member, payload.member_id, "구성원")
     for key, value in payload.model_dump().items():
         setattr(account, key, value)
     commit_or_conflict(db, f"이미 존재하는 계정 이름입니다: {payload.name}")

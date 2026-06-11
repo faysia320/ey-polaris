@@ -29,10 +29,14 @@ def _signed_amount():
 @router.get("/dashboard", response_model=schemas.DashboardOut)
 def dashboard(
     month: str = Query(pattern=schemas.YEAR_MONTH_PATTERN),
+    member_id: int | None = Query(default=None, description="구성원 필터 — 미지정 시 전체"),
     db: Session = Depends(get_db),
 ):
     start, end = _month_range(month)
     in_month = (models.Transaction.date >= start) & (models.Transaction.date < end)
+    if member_id is not None:
+        # 구성원 필터 — 거래 기반 집계(합계/카테고리/예산 spent)에 일괄 적용
+        in_month = in_month & (models.Transaction.member_id == member_id)
 
     def month_total(kind: str) -> int:
         return db.scalar(
@@ -80,7 +84,7 @@ def dashboard(
         for b in budget_rows
     ]
 
-    recent = db.scalars(
+    recent_stmt = (
         select(models.Transaction)
         .options(
             selectinload(models.Transaction.category),
@@ -89,7 +93,10 @@ def dashboard(
         )
         .order_by(models.Transaction.date.desc(), models.Transaction.id.desc())
         .limit(5)
-    ).all()
+    )
+    if member_id is not None:
+        recent_stmt = recent_stmt.where(models.Transaction.member_id == member_id)
+    recent = db.scalars(recent_stmt).all()
 
     return schemas.DashboardOut(
         month=month,
@@ -107,8 +114,14 @@ def dashboard(
 
 
 @router.get("/assets", response_model=schemas.AssetsOut)
-def assets(db: Session = Depends(get_db)):
+def assets(
+    member_id: int | None = Query(default=None, description="소유자 필터 — 미지정 시 전체"),
+    db: Session = Depends(get_db),
+):
     accounts = db.scalars(select(models.Account).order_by(models.Account.id)).all()
+    # 구성원 필터 — 카드/총자산/추이는 소유 계정만으로 계산하되,
+    # 목표 달성률용 전체 총자산(grand_total)은 항상 전 계정 기준으로 계산한다
+    visible = accounts if member_id is None else [a for a in accounts if a.member_id == member_id]
     net_by_account = dict(
         db.execute(
             select(models.Transaction.account_id, func.sum(_signed_amount())).group_by(
@@ -142,23 +155,23 @@ def assets(db: Session = Depends(get_db)):
     ).all():
         monthly_valuations.setdefault(account_id, []).append((m, valued_on, value))
 
-    balances: list[schemas.AccountBalance] = []
+    balances_by_id: dict[int, schemas.AccountBalance] = {}
     for a in accounts:
         history = monthly_valuations.get(a.id, [])
         if history:
             _, valued_at, balance = history[-1]
         else:
             balance, valued_at = a.opening_balance + int(net_by_account.get(a.id, 0)), None
-        balances.append(
-            schemas.AccountBalance(
-                id=a.id,
-                name=a.name,
-                type=a.type,
-                is_active=a.is_active,
-                balance=balance,
-                valued_at=valued_at,
-            )
+        balances_by_id[a.id] = schemas.AccountBalance(
+            id=a.id,
+            name=a.name,
+            type=a.type,
+            is_active=a.is_active,
+            balance=balance,
+            valued_at=valued_at,
         )
+    grand_total = sum(b.balance for b in balances_by_id.values())
+    balances = [balances_by_id[a.id] for a in visible]
 
     # 월별 자산 추이 (최근 12개월): 계정별로
     #  - 해당 월 말 이전의 최신 평가액이 있으면 그 평가액
@@ -187,13 +200,13 @@ def assets(db: Session = Depends(get_db)):
     running_by_account = {
         a.id: a.opening_balance
         + sum(v for (acc_id, m), v in account_month_net.items() if acc_id == a.id and m < months[0])
-        for a in accounts
+        for a in visible
     }
     # 계정별 평가액 포인터 워크: 창 시작 이전의 최신 평가액을 시작점으로 두고
     # 월을 진행하며 최신값을 갱신한다 (월마다 이력 전체를 재탐색하지 않음)
     val_idx: dict[int, int] = {}
     last_value: dict[int, int | None] = {}
-    for a in accounts:
+    for a in visible:
         history = monthly_valuations.get(a.id, [])
         i = 0
         while i < len(history) and history[i][0] < months[0]:
@@ -204,7 +217,7 @@ def assets(db: Session = Depends(get_db)):
     trend: list[schemas.MonthlyPoint] = []
     for m in months:
         total = 0
-        for a in accounts:
+        for a in visible:
             running_by_account[a.id] += account_month_net.get((a.id, m), 0)
             history = monthly_valuations.get(a.id, [])
             i = val_idx[a.id]
@@ -219,5 +232,6 @@ def assets(db: Session = Depends(get_db)):
     return schemas.AssetsOut(
         accounts=balances,
         total=sum(b.balance for b in balances),
+        grand_total=grand_total,
         trend=trend,
     )

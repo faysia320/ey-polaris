@@ -116,6 +116,7 @@ def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
 def import_transactions(
     file: UploadFile = File(description="뱅크샐러드 내보내기 .xlsx 파일"),
     month: str = Form(pattern=schemas.YEAR_MONTH_PATTERN),
+    default_member_id: int = Form(description="자동 생성되는 새 계정의 소유자 구성원 id"),
     db: Session = Depends(get_db),
 ):
     """엑셀 "가계부 내역" 시트에서 지정 월만 가져온다.
@@ -123,7 +124,9 @@ def import_transactions(
     같은 월의 기존 가져오기(source='import') 거래는 삭제 후 다시 등록하므로
     재업로드해도 중복되지 않는다. 수동 입력 거래는 보존된다.
     전 과정이 단일 트랜잭션이라 실패 시 기존 데이터가 유지된다.
+    엑셀에는 소유자 정보가 없으므로 새로 생성되는 계정은 default_member_id 소유가 된다.
     """
+    get_or_404(db, models.Member, default_member_id, "구성원")
     try:
         parsed, skipped, month_rows = excel_import.parse_ledger(file.file.read(), month)
     except excel_import.ExcelFormatError as exc:
@@ -167,6 +170,7 @@ def import_transactions(
                 type=excel_import.guess_account_type(row.account_name),
                 opening_balance=0,
                 is_active=True,
+                member_id=default_member_id,
             )
             db.add(account)
             db.flush()

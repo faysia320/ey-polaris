@@ -3,11 +3,13 @@ import type { EChartsOption } from 'echarts'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { EChart } from '@/components/charts/EChart'
+import { MemberFilterSelect } from '@/components/members/MemberFilterSelect'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { addMonths, currentMonth, formatKRW, monthPace } from '@/lib/format'
 import { useAnalyticsStore } from '@/stores/analytics'
+import { useMemberFilterStore } from '@/stores/memberFilter'
 
 function guideMessage(budgetTotal: number, budgetSpent: number, month: string): string {
   if (budgetTotal <= 0) {
@@ -24,11 +26,12 @@ function guideMessage(budgetTotal: number, budgetSpent: number, month: string): 
 export function DashboardPage() {
   const [month, setMonth] = useState(currentMonth())
   const { dashboard, fetchDashboard } = useAnalyticsStore()
+  const memberId = useMemberFilterStore((s) => s.memberId)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchDashboard(month).catch((e: Error) => setError(e.message))
-  }, [month, fetchDashboard])
+    fetchDashboard(month, memberId).catch((e: Error) => setError(e.message))
+  }, [month, memberId, fetchDashboard])
 
   const treemapOption = useMemo<EChartsOption>(() => {
     const data = dashboard?.expense_by_category ?? []
@@ -77,6 +80,7 @@ export function DashboardPage() {
           <Button variant="outline" size="icon" onClick={() => setMonth(addMonths(month, 1))}>
             <ChevronRight />
           </Button>
+          <MemberFilterSelect />
         </div>
       </div>
 

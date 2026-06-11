@@ -35,4 +35,4 @@ def update_member(member_id: int, payload: schemas.MemberUpdate, db: Session = D
 def delete_member(member_id: int, db: Session = Depends(get_db)):
     member = get_or_404(db, models.Member, member_id, "구성원")
     db.delete(member)
-    commit_or_conflict(db, "거래에서 참조 중인 구성원은 삭제할 수 없습니다")
+    commit_or_conflict(db, "거래 또는 계정(소유자)에서 참조 중인 구성원은 삭제할 수 없습니다")

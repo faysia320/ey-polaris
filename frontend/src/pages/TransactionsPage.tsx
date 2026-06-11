@@ -47,10 +47,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { MemberFilterSelect } from '@/components/members/MemberFilterSelect'
 import { TransactionCalendar } from '@/components/transactions/TransactionCalendar'
 import { api } from '@/lib/api'
 import { addMonths, categoryLabel, currentMonth, formatKRW, todayISO } from '@/lib/format'
 import { useMasterDataStore } from '@/stores/masterData'
+import { useMemberFilterStore } from '@/stores/memberFilter'
 import { useTransactionStore } from '@/stores/transactions'
 import type { ImportResult, Transaction, TransactionKind } from '@/types'
 
@@ -80,6 +82,7 @@ const emptyForm = (): FormState => ({
 export function TransactionsPage() {
   const { items, filters, fetch, setFilters, create, update, remove } = useTransactionStore()
   const { categories, accounts, members, loaded, fetchAll } = useMasterDataStore()
+  const memberId = useMemberFilterStore((s) => s.memberId)
 
   const [view, setView] = useState<'table' | 'calendar'>('table')
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
@@ -93,14 +96,19 @@ export function TransactionsPage() {
   const [importOpen, setImportOpen] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importMonth, setImportMonth] = useState(() => addMonths(currentMonth(), -1))
+  const [importMemberId, setImportMemberId] = useState('')
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
 
+  // 전역 구성원 필터를 거래 필터에 동기화 — 마운트 시 조회를 겸한다 (setFilters가 fetch 포함)
   useEffect(() => {
-    fetch().catch((e: Error) => setPageError(e.message))
+    setFilters({ member_id: memberId }).catch((e: Error) => setPageError(e.message))
+  }, [memberId, setFilters])
+
+  useEffect(() => {
     if (!loaded) fetchAll().catch((e: Error) => setPageError(e.message))
-  }, [fetch, fetchAll, loaded])
+  }, [fetchAll, loaded])
 
   // 캘린더 뷰는 항상 특정 월을 기준으로 한다 (월 필터가 비어 있으면 현재 월)
   const calendarMonth = filters.month ?? currentMonth()
@@ -289,12 +297,14 @@ export function TransactionsPage() {
   const runImport = async () => {
     if (!importFile) return setImportError('업로드할 .xlsx 파일을 선택해주세요')
     if (!importMonth) return setImportError('가져올 월을 선택해주세요')
+    if (!importMemberId) return setImportError('새 계정의 기본 소유자를 선택해주세요')
     setImporting(true)
     setImportError(null)
     try {
       const body = new FormData()
       body.append('file', importFile)
       body.append('month', importMonth)
+      body.append('default_member_id', importMemberId)
       const result = await api.upload<ImportResult>('/transactions/import', body)
       setImportResult(result)
       // 새 카테고리/계정이 생겼을 수 있으니 기준정보까지 재조회
@@ -309,6 +319,7 @@ export function TransactionsPage() {
   const openImport = () => {
     setImportFile(null)
     setImportMonth(addMonths(currentMonth(), -1))
+    setImportMemberId('')
     setImportError(null)
     setImportResult(null)
     setImportOpen(true)
@@ -319,6 +330,7 @@ export function TransactionsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">지출/수입 내역</h1>
         <div className="flex items-center gap-2">
+          <MemberFilterSelect />
           <div className="flex rounded-lg border p-0.5">
             <Button
               variant={view === 'table' ? 'secondary' : 'ghost'}
@@ -779,6 +791,24 @@ export function TransactionsPage() {
                   value={importMonth}
                   onChange={(e) => setImportMonth(e.target.value)}
                 />
+              </div>
+              <div className="space-y-1">
+                <Label>새 계정 기본 소유자</Label>
+                <Select value={importMemberId || undefined} onValueChange={setImportMemberId}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="선택" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {members.map((m) => (
+                      <SelectItem key={m.id} value={String(m.id)}>
+                        {m.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  엑셀에 처음 등장하는 자산 계정이 자동 생성될 때 이 구성원의 소유가 돼요.
+                </p>
               </div>
               <p className="text-xs text-muted-foreground">
                 해당 월에 이전에 업로드한 내역이 있으면 삭제 후 다시 등록돼요. 직접 입력한

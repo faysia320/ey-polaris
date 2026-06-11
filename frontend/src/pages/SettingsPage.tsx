@@ -217,13 +217,14 @@ function CategoriesTab() {
 
 // ---------- 자산 계정 탭 ----------
 function AccountsTab() {
-  const { accounts, createAccount, updateAccount, deleteAccount } = useMasterDataStore()
+  const { accounts, members, createAccount, updateAccount, deleteAccount } = useMasterDataStore()
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Account | null>(null)
   const [name, setName] = useState('')
   const [type, setType] = useState<AccountType>('bank')
   const [openingBalance, setOpeningBalance] = useState('0')
   const [isActive, setIsActive] = useState(true)
+  const [memberId, setMemberId] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const openCreate = () => {
@@ -232,6 +233,7 @@ function AccountsTab() {
     setType('bank')
     setOpeningBalance('0')
     setIsActive(true)
+    setMemberId('')
     setError(null)
     setOpen(true)
   }
@@ -242,6 +244,7 @@ function AccountsTab() {
     setType(a.type)
     setOpeningBalance(String(a.opening_balance))
     setIsActive(a.is_active)
+    setMemberId(String(a.member_id))
     setError(null)
     setOpen(true)
   }
@@ -250,7 +253,14 @@ function AccountsTab() {
     if (!name.trim()) return setError('이름을 입력해주세요')
     const balance = Number(openingBalance)
     if (!Number.isInteger(balance)) return setError('개설 잔액은 정수여야 합니다')
-    const input = { name: name.trim(), type, opening_balance: balance, is_active: isActive }
+    if (!memberId) return setError('소유자를 선택해주세요')
+    const input = {
+      name: name.trim(),
+      type,
+      opening_balance: balance,
+      is_active: isActive,
+      member_id: Number(memberId),
+    }
     try {
       if (editing) {
         await updateAccount(editing.id, input)
@@ -276,6 +286,7 @@ function AccountsTab() {
             <TableRow>
               <TableHead>이름</TableHead>
               <TableHead>유형</TableHead>
+              <TableHead>소유자</TableHead>
               <TableHead>개설 잔액</TableHead>
               <TableHead>상태</TableHead>
               <TableHead className="w-24"></TableHead>
@@ -286,6 +297,7 @@ function AccountsTab() {
               <TableRow key={a.id}>
                 <TableCell>{a.name}</TableCell>
                 <TableCell>{ACCOUNT_TYPES.find((t) => t.value === a.type)?.label}</TableCell>
+                <TableCell>{members.find((m) => m.id === a.member_id)?.name ?? '—'}</TableCell>
                 <TableCell>{formatKRW(a.opening_balance)}</TableCell>
                 <TableCell>
                   <Badge variant={a.is_active ? 'secondary' : 'outline'}>
@@ -321,6 +333,21 @@ function AccountsTab() {
                   {ACCOUNT_TYPES.map((t) => (
                     <SelectItem key={t.value} value={t.value}>
                       {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>소유자</Label>
+              <Select value={memberId || undefined} onValueChange={setMemberId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  {members.map((m) => (
+                    <SelectItem key={m.id} value={String(m.id)}>
+                      {m.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

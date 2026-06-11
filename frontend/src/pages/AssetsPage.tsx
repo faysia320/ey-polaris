@@ -3,6 +3,7 @@ import type { EChartsOption } from 'echarts'
 import { Pencil, Plus, Target, Trash2 } from 'lucide-react'
 
 import { EChart } from '@/components/charts/EChart'
+import { MemberFilterSelect } from '@/components/members/MemberFilterSelect'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -20,6 +21,7 @@ import { api } from '@/lib/api'
 import { formatKRW, todayISO } from '@/lib/format'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { useGoalStore } from '@/stores/goals'
+import { useMemberFilterStore } from '@/stores/memberFilter'
 import type { AccountBalance, AccountType, Goal, Valuation } from '@/types'
 
 const ACCOUNT_TYPE_LABEL: Record<AccountType, string> = {
@@ -37,6 +39,7 @@ const VALUATION_TYPES: AccountType[] = ['stock', 'real_estate']
 
 export function AssetsPage() {
   const { assets, fetchAssets } = useAnalyticsStore()
+  const memberId = useMemberFilterStore((s) => s.memberId)
   const {
     items: goalItems,
     loaded: goalsLoaded,
@@ -65,9 +68,12 @@ export function AssetsPage() {
   const [goalError, setGoalError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchAssets().catch((e: Error) => setError(e.message))
+    fetchAssets(memberId).catch((e: Error) => setError(e.message))
+  }, [fetchAssets, memberId])
+
+  useEffect(() => {
     if (!goalsLoaded) fetchGoals().catch((e: Error) => setGoalListError(e.message))
-  }, [fetchAssets, fetchGoals, goalsLoaded])
+  }, [fetchGoals, goalsLoaded])
 
   const trendOption = useMemo<EChartsOption>(() => {
     const trend = assets?.trend ?? []
@@ -112,7 +118,7 @@ export function AssetsPage() {
     try {
       await api.delete(`/accounts/${valuationTarget.id}/valuations/${valuationId}`)
       setValuationError(null)
-      await Promise.all([loadValuationHistory(valuationTarget.id), fetchAssets()])
+      await Promise.all([loadValuationHistory(valuationTarget.id), fetchAssets(memberId)])
     } catch (e) {
       setValuationError((e as Error).message)
     }
@@ -133,7 +139,7 @@ export function AssetsPage() {
         value,
       })
       setValuationTarget(null)
-      await fetchAssets()
+      await fetchAssets(memberId)
     } catch (e) {
       setValuationError((e as Error).message)
     }
@@ -184,10 +190,15 @@ export function AssetsPage() {
   }
 
   const total = assets?.total ?? 0
+  // 목표는 부부 공동 — 구성원 필터와 무관하게 항상 가구 전체 총자산 기준
+  const grandTotal = assets?.grand_total ?? 0
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">자산 상태</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">자산 상태</h1>
+        <MemberFilterSelect />
+      </div>
 
       <Card className="border-yellow-300/30">
         <CardHeader>
@@ -203,6 +214,9 @@ export function AssetsPage() {
           <CardTitle className="flex items-center justify-between">
             <span className="flex items-center gap-2">
               <Target className="size-4 text-yellow-300" /> 목표 달성 현황
+              <span className="text-xs font-normal text-muted-foreground">
+                부부 공동 목표 — 전체 자산 기준
+              </span>
             </span>
             <Button size="sm" onClick={openGoalCreate}>
               <Plus /> 목표 추가
@@ -219,7 +233,7 @@ export function AssetsPage() {
             </p>
           )}
           {goalItems.map((g) => {
-            const rate = total / g.target_amount
+            const rate = grandTotal / g.target_amount
             return (
               <div key={g.id}>
                 <div className="flex items-center justify-between text-sm">
@@ -231,7 +245,7 @@ export function AssetsPage() {
                   </span>
                   <span className="flex items-center gap-1">
                     <span className="text-muted-foreground">
-                      {formatKRW(total)} / {formatKRW(g.target_amount)} (
+                      {formatKRW(grandTotal)} / {formatKRW(g.target_amount)} (
                       {Math.round(rate * 100)}%)
                     </span>
                     <Button variant="ghost" size="icon-sm" onClick={() => openGoalEdit(g)}>
@@ -264,41 +278,60 @@ export function AssetsPage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {assets?.accounts.map((a) => (
-          <Card key={a.id} className={a.is_active ? '' : 'opacity-50'}>
+      {/* 계정 카드 — 유형(카테고리)별 그룹 카드 안에 중첩. 계정이 없는 유형은 표시하지 않는다 */}
+      {(Object.keys(ACCOUNT_TYPE_LABEL) as AccountType[]).map((type) => {
+        const group = assets?.accounts.filter((a) => a.type === type) ?? []
+        if (group.length === 0) return null
+        const subtotal = group.reduce((sum, a) => sum + a.balance, 0)
+        return (
+          <Card key={type}>
             <CardHeader>
-              <CardTitle className="flex items-center justify-between text-base">
-                <span>{a.name}</span>
-                <span className="flex gap-1">
-                  <Badge variant="outline">{ACCOUNT_TYPE_LABEL[a.type]}</Badge>
-                  {!a.is_active && <Badge variant="secondary">비활성</Badge>}
+              <CardTitle className="flex items-center justify-between">
+                <span>{ACCOUNT_TYPE_LABEL[type]}</span>
+                <span className="text-sm font-normal text-muted-foreground">
+                  {formatKRW(subtotal)}
                 </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p
-                className={`text-xl font-semibold ${a.balance < 0 ? 'text-rose-400' : ''}`}
-              >
-                {formatKRW(a.balance)}
-              </p>
-              {a.valued_at && (
-                <p className="mt-1 text-xs text-muted-foreground">평가 기준일 {a.valued_at}</p>
-              )}
-              {VALUATION_TYPES.includes(a.type) && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-3"
-                  onClick={() => openValuation(a)}
-                >
-                  평가액 갱신
-                </Button>
-              )}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {group.map((a) => (
+                  <Card key={a.id} className={a.is_active ? '' : 'opacity-50'}>
+                    <CardHeader>
+                      <CardTitle className="flex items-center justify-between text-base">
+                        <span>{a.name}</span>
+                        {!a.is_active && <Badge variant="secondary">비활성</Badge>}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p
+                        className={`text-xl font-semibold ${a.balance < 0 ? 'text-rose-400' : ''}`}
+                      >
+                        {formatKRW(a.balance)}
+                      </p>
+                      {a.valued_at && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          평가 기준일 {a.valued_at}
+                        </p>
+                      )}
+                      {VALUATION_TYPES.includes(a.type) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-3"
+                          onClick={() => openValuation(a)}
+                        >
+                          평가액 갱신
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             </CardContent>
           </Card>
-        ))}
-      </div>
+        )
+      })}
 
       <Card>
         <CardHeader>
@@ -382,7 +415,9 @@ export function AssetsPage() {
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>{editingGoal ? '목표 수정' : '목표 추가'}</DialogTitle>
-            <DialogDescription>달성률은 현재 총자산 기준으로 계산돼요.</DialogDescription>
+            <DialogDescription>
+              달성률은 가구 전체 총자산(부부 공동) 기준으로 계산돼요.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1">

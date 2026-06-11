@@ -30,6 +30,7 @@ class AccountCreate(BaseModel):
     type: AccountType
     opening_balance: int = 0
     is_active: bool = True
+    member_id: int = Field(description="소유자 구성원 id — 모든 계정은 소유자 필수")
 
 
 class AccountUpdate(AccountCreate):
@@ -181,6 +182,8 @@ class MonthlyPoint(BaseModel):
 class AssetsOut(BaseModel):
     accounts: list[AccountBalance]
     total: int
+    # 구성원 필터와 무관한 가구 전체 총자산 — 공동 목표 달성률 계산용
+    grand_total: int
     trend: list[MonthlyPoint]
 
 

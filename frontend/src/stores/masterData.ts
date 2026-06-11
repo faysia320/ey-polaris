@@ -13,6 +13,7 @@ export interface AccountInput {
   type: AccountType
   opening_balance: number
   is_active: boolean
+  member_id: number
 }
 
 export interface CategoryInput {

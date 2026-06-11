@@ -19,7 +19,10 @@ class Member(Base):
 
 
 class Account(Base):
-    """자산 계정 (은행/현금/카드/투자 등). 현재 잔액은 opening_balance + 거래 합산으로 계산."""
+    """자산 계정 (은행/현금/카드/투자 등). 현재 잔액은 opening_balance + 거래 합산으로 계산.
+
+    소유자(member_id)는 필수 — 구성원별 자산 필터의 기준. 공동 계정 개념은 없다.
+    """
 
     __tablename__ = "accounts"
 
@@ -28,8 +31,10 @@ class Account(Base):
     type: Mapped[str] = mapped_column(String(20))  # bank | cash | card | investment | other
     opening_balance: Mapped[int] = mapped_column(BigInteger, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id", ondelete="RESTRICT"))
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="account")
+    member: Mapped["Member"] = relationship()
 
 
 class Category(Base):

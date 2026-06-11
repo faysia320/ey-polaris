@@ -21,6 +21,8 @@ export interface Account {
   type: AccountType
   opening_balance: number
   is_active: boolean
+  /** 소유자 구성원 id — 모든 계정은 소유자 필수 */
+  member_id: number
 }
 
 export interface Category {
@@ -132,6 +134,8 @@ export interface MonthlyPoint {
 export interface Assets {
   accounts: AccountBalance[]
   total: number
+  /** 구성원 필터와 무관한 가구 전체 총자산 — 공동 목표 달성률 계산용 */
+  grand_total: number
   trend: MonthlyPoint[]
 }
 
