@@ -13,6 +13,7 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  FileUp,
   Pencil,
   Plus,
   Table2,
@@ -47,14 +48,17 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { TransactionCalendar } from '@/components/transactions/TransactionCalendar'
-import { addMonths, currentMonth, formatKRW, todayISO } from '@/lib/format'
+import { api } from '@/lib/api'
+import { addMonths, categoryLabel, currentMonth, formatKRW, todayISO } from '@/lib/format'
 import { useMasterDataStore } from '@/stores/masterData'
 import { useTransactionStore } from '@/stores/transactions'
-import type { Transaction, TransactionKind } from '@/types'
+import type { ImportResult, Transaction, TransactionKind } from '@/types'
 
 interface FormState {
   date: string
   kind: TransactionKind
+  /** 대분류 — 소분류(category_id) 선택을 위한 중간 단계 */
+  category_major: string
   category_id: string
   account_id: string
   member_id: string
@@ -65,6 +69,7 @@ interface FormState {
 const emptyForm = (): FormState => ({
   date: todayISO(),
   kind: 'expense',
+  category_major: '',
   category_id: '',
   account_id: '',
   member_id: 'none',
@@ -84,6 +89,13 @@ export function TransactionsPage() {
   const [form, setForm] = useState<FormState>(emptyForm())
   const [formError, setFormError] = useState<string | null>(null)
   const [pageError, setPageError] = useState<string | null>(null)
+
+  const [importOpen, setImportOpen] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importMonth, setImportMonth] = useState(() => addMonths(currentMonth(), -1))
+  const [importing, setImporting] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
 
   useEffect(() => {
     fetch().catch((e: Error) => setPageError(e.message))
@@ -126,6 +138,7 @@ export function TransactionsPage() {
     setForm({
       date: t.date,
       kind: t.kind,
+      category_major: categories.find((c) => c.id === t.category_id)?.major ?? '',
       category_id: String(t.category_id),
       account_id: String(t.account_id),
       member_id: t.member_id ? String(t.member_id) : 'none',
@@ -256,7 +269,50 @@ export function TransactionsPage() {
     initialState: { pagination: { pageSize: 15 } },
   })
 
-  const formCategories = categories.filter((c) => c.kind === form.kind)
+  // 거래 폼용 — 구분에 맞는 대분류 목록과, 선택된 대분류의 소분류 목록
+  const formMajors = [
+    ...new Set(categories.filter((c) => c.kind === form.kind).map((c) => c.major)),
+  ]
+  const formMinors = categories.filter(
+    (c) => c.kind === form.kind && c.major === form.category_major,
+  )
+  // 필터용 — 구분 필터가 있으면 해당 구분의 대분류만
+  const filterMajors = [
+    ...new Set(
+      categories.filter((c) => !filters.kind || c.kind === filters.kind).map((c) => c.major),
+    ),
+  ]
+  const filterMinors = categories.filter(
+    (c) => c.major === filters.major && (!filters.kind || c.kind === filters.kind),
+  )
+
+  const runImport = async () => {
+    if (!importFile) return setImportError('업로드할 .xlsx 파일을 선택해주세요')
+    if (!importMonth) return setImportError('가져올 월을 선택해주세요')
+    setImporting(true)
+    setImportError(null)
+    try {
+      const body = new FormData()
+      body.append('file', importFile)
+      body.append('month', importMonth)
+      const result = await api.upload<ImportResult>('/transactions/import', body)
+      setImportResult(result)
+      // 새 카테고리/계정이 생겼을 수 있으니 기준정보까지 재조회
+      await Promise.all([fetch(), fetchAll()])
+    } catch (e) {
+      setImportError((e as Error).message)
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const openImport = () => {
+    setImportFile(null)
+    setImportMonth(addMonths(currentMonth(), -1))
+    setImportError(null)
+    setImportResult(null)
+    setImportOpen(true)
+  }
 
   return (
     <div className="space-y-6">
@@ -279,6 +335,9 @@ export function TransactionsPage() {
               <CalendarDays /> 캘린더
             </Button>
           </div>
+          <Button variant="outline" onClick={openImport}>
+            <FileUp /> 엑셀 업로드
+          </Button>
           <Button onClick={openCreate}>
             <Plus /> 거래 추가
           </Button>
@@ -307,9 +366,12 @@ export function TransactionsPage() {
           <Select
             value={filters.kind ?? 'all'}
             onValueChange={(v) =>
-              setFilters({ kind: v === 'all' ? null : (v as TransactionKind) }).catch(
-                (err: Error) => setPageError(err.message),
-              )
+              // 구분이 바뀌면 다른 구분의 카테고리 필터는 의미가 없으므로 함께 초기화
+              setFilters({
+                kind: v === 'all' ? null : (v as TransactionKind),
+                major: null,
+                category_id: null,
+              }).catch((err: Error) => setPageError(err.message))
             }
           >
             <SelectTrigger className="w-32">
@@ -323,11 +385,11 @@ export function TransactionsPage() {
           </Select>
         </div>
         <div className="space-y-1">
-          <Label>카테고리</Label>
+          <Label>대분류</Label>
           <Select
-            value={filters.category_id ? String(filters.category_id) : 'all'}
+            value={filters.major ?? 'all'}
             onValueChange={(v) =>
-              setFilters({ category_id: v === 'all' ? null : Number(v) }).catch(
+              setFilters({ major: v === 'all' ? null : v, category_id: null }).catch(
                 (err: Error) => setPageError(err.message),
               )
             }
@@ -337,14 +399,39 @@ export function TransactionsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">전체</SelectItem>
-              {categories.map((c) => (
-                <SelectItem key={c.id} value={String(c.id)}>
-                  {c.name}
+              {filterMajors.map((m) => (
+                <SelectItem key={m} value={m}>
+                  {m}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
+        {filters.major && (
+          <div className="space-y-1">
+            <Label>소분류</Label>
+            <Select
+              value={filters.category_id ? String(filters.category_id) : 'all'}
+              onValueChange={(v) =>
+                setFilters({ category_id: v === 'all' ? null : Number(v) }).catch(
+                  (err: Error) => setPageError(err.message),
+                )
+              }
+            >
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체</SelectItem>
+                {filterMinors.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    {c.minor}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       {view === 'table' ? (
@@ -423,6 +510,22 @@ export function TransactionsPage() {
               <ChevronRight />
             </Button>
           </div>
+          {(filters.kind || filters.major || filters.category_id) && (
+            <p className="text-center text-xs text-muted-foreground">
+              {[
+                filters.kind && (filters.kind === 'income' ? '수입' : '지출'),
+                filters.category_id
+                  ? (() => {
+                      const c = categories.find((cat) => cat.id === filters.category_id)
+                      return c ? categoryLabel(c) : '카테고리'
+                    })()
+                  : filters.major,
+              ]
+                .filter(Boolean)
+                .join(' · ')}{' '}
+              필터가 적용된 거래만 합산하고 있어요
+            </p>
+          )}
           <TransactionCalendar
             month={calendarMonth}
             transactions={items}
@@ -492,7 +595,12 @@ export function TransactionsPage() {
                 <Select
                   value={form.kind}
                   onValueChange={(v) =>
-                    setForm({ ...form, kind: v as TransactionKind, category_id: '' })
+                    setForm({
+                      ...form,
+                      kind: v as TransactionKind,
+                      category_major: '',
+                      category_id: '',
+                    })
                   }
                 >
                   <SelectTrigger className="w-full">
@@ -518,23 +626,43 @@ export function TransactionsPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>카테고리</Label>
+                <Label>대분류</Label>
                 <Select
-                  value={form.category_id || undefined}
-                  onValueChange={(v) => setForm({ ...form, category_id: v })}
+                  value={form.category_major || undefined}
+                  onValueChange={(v) => setForm({ ...form, category_major: v, category_id: '' })}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="선택" />
                   </SelectTrigger>
                   <SelectContent>
-                    {formCategories.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)}>
-                        {c.name}
+                    {formMajors.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {m}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-1">
+                <Label>소분류</Label>
+                <Select
+                  value={form.category_id || undefined}
+                  onValueChange={(v) => setForm({ ...form, category_id: v })}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={form.category_major ? '선택' : '대분류 먼저'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {formMinors.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.minor}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label>자산 계정</Label>
                 <Select
@@ -555,8 +683,6 @@ export function TransactionsPage() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label>구성원</Label>
                 <Select
@@ -576,7 +702,7 @@ export function TransactionsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
+              <div className="col-span-2 space-y-1">
                 <Label htmlFor="tx-memo">메모</Label>
                 <Input
                   id="tx-memo"
@@ -593,6 +719,87 @@ export function TransactionsPage() {
               취소
             </Button>
             <Button onClick={submit}>{editing ? '수정' : '추가'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>엑셀 업로드</DialogTitle>
+            <DialogDescription>
+              뱅크샐러드 내보내기 파일의 "가계부 내역"에서 선택한 달만 가져옵니다.
+            </DialogDescription>
+          </DialogHeader>
+          {importResult ? (
+            <div className="space-y-3 text-sm">
+              <p>
+                <span className="font-medium">{importResult.month}</span> 가져오기 완료 — 등록{' '}
+                {importResult.created_count}건
+                {importResult.deleted_count > 0 && ` (기존 ${importResult.deleted_count}건 교체)`}
+                {importResult.skipped.length > 0 && `, 건너뜀 ${importResult.skipped.length}건`}
+              </p>
+              {importResult.created_categories.length > 0 && (
+                <p className="text-muted-foreground">
+                  새 카테고리: {importResult.created_categories.join(', ')}
+                </p>
+              )}
+              {importResult.created_accounts.length > 0 && (
+                <p className="text-muted-foreground">
+                  새 자산 계정: {importResult.created_accounts.join(', ')}
+                </p>
+              )}
+              {importResult.skipped.length > 0 && (
+                <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
+                  {importResult.skipped.map((s) => (
+                    <p key={s.row} className="text-xs text-muted-foreground">
+                      {s.row}행: {s.reason}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <Label htmlFor="import-file">엑셀 파일 (.xlsx)</Label>
+                <Input
+                  id="import-file"
+                  type="file"
+                  accept=".xlsx"
+                  onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="import-month">가져올 월</Label>
+                <Input
+                  id="import-month"
+                  type="month"
+                  className="w-40"
+                  value={importMonth}
+                  onChange={(e) => setImportMonth(e.target.value)}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                해당 월에 이전에 업로드한 내역이 있으면 삭제 후 다시 등록돼요. 직접 입력한
+                거래는 그대로 유지됩니다.
+              </p>
+              {importError && <p className="text-sm text-destructive">{importError}</p>}
+            </div>
+          )}
+          <DialogFooter>
+            {importResult ? (
+              <Button onClick={() => setImportOpen(false)}>닫기</Button>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setImportOpen(false)}>
+                  취소
+                </Button>
+                <Button onClick={runImport} disabled={importing}>
+                  {importing ? '업로드 중…' : '업로드'}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

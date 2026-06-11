@@ -1,5 +1,10 @@
 const krw = new Intl.NumberFormat('ko-KR')
 
+/** 카테고리 표시명 — 소분류가 '미분류'면 대분류만 (백엔드 display_name과 동일 규칙). */
+export function categoryLabel(c: { major: string; minor: string }): string {
+  return c.minor === '미분류' ? c.major : `${c.major} > ${c.minor}`
+}
+
 export function formatKRW(amount: number): string {
   return `${krw.format(amount)}원`
 }

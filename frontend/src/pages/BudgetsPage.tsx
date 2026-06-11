@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { addMonths, formatKRW } from '@/lib/format'
+import { addMonths, categoryLabel, formatKRW } from '@/lib/format'
 import { useBudgetStore } from '@/stores/budgets'
 import { useMasterDataStore } from '@/stores/masterData'
 
@@ -112,7 +112,7 @@ export function BudgetsPage() {
               return (
                 <TableRow key={c.id}>
                   <TableCell>
-                    {c.name}
+                    {categoryLabel(c)}
                     <span className="ml-2 text-xs text-muted-foreground">
                       {c.nature === 'fixed' ? '🛸 정기 궤도' : '☄️ 유성우'}
                     </span>

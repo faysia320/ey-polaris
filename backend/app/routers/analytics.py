@@ -41,18 +41,28 @@ def dashboard(
             )
         )
 
+    # 도넛 차트용 — 소분류 56종을 그대로 내보내면 과밀하므로 대분류로 집계
     expense_rows = db.execute(
         select(
-            models.Category.id,
-            models.Category.name,
+            models.Category.major,
             func.sum(models.Transaction.amount).label("amount"),
         )
         .join(models.Transaction, models.Transaction.category_id == models.Category.id)
         .where(in_month, models.Transaction.kind == "expense")
-        .group_by(models.Category.id, models.Category.name)
+        .group_by(models.Category.major)
         .order_by(func.sum(models.Transaction.amount).desc())
     ).all()
-    spent_by_category = {row.id: row.amount for row in expense_rows}
+    # 예산 진행률용 — 예산은 카테고리(소분류) 행 단위
+    spent_by_category = dict(
+        db.execute(
+            select(
+                models.Transaction.category_id,
+                func.sum(models.Transaction.amount),
+            )
+            .where(in_month, models.Transaction.kind == "expense")
+            .group_by(models.Transaction.category_id)
+        ).all()
+    )
 
     budget_rows = db.scalars(
         select(models.Budget)
@@ -63,7 +73,7 @@ def dashboard(
     budgets = [
         schemas.BudgetProgress(
             category_id=b.category_id,
-            category_name=b.category.name,
+            category_name=b.category.display_name,
             amount=b.amount,
             spent=spent_by_category.get(b.category_id, 0),
         )
@@ -89,7 +99,7 @@ def dashboard(
         budget_spent=sum(b.spent for b in budgets),
         budgets=budgets,
         expense_by_category=[
-            schemas.CategoryAmount(category_id=row.id, category_name=row.name, amount=row.amount)
+            schemas.CategoryAmount(category_name=row.major, amount=row.amount)
             for row in expense_rows
         ],
         recent_transactions=[transaction_to_out(t) for t in recent],

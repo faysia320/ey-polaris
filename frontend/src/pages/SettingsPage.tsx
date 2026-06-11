@@ -47,14 +47,19 @@ function CategoriesTab() {
   const { categories, createCategory, updateCategory, deleteCategory } = useMasterDataStore()
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Category | null>(null)
-  const [name, setName] = useState('')
+  const [major, setMajor] = useState('')
+  const [minor, setMinor] = useState('')
   const [kind, setKind] = useState<TransactionKind>('expense')
   const [nature, setNature] = useState<CategoryNature>('variable')
   const [error, setError] = useState<string | null>(null)
 
+  // 대분류 입력 자동완성용 — 같은 구분의 기존 대분류 목록
+  const majorOptions = [...new Set(categories.filter((c) => c.kind === kind).map((c) => c.major))]
+
   const openCreate = () => {
     setEditing(null)
-    setName('')
+    setMajor('')
+    setMinor('')
     setKind('expense')
     setNature('variable')
     setError(null)
@@ -63,7 +68,8 @@ function CategoriesTab() {
 
   const openEdit = (c: Category) => {
     setEditing(c)
-    setName(c.name)
+    setMajor(c.major)
+    setMinor(c.minor)
     setKind(c.kind)
     setNature(c.nature)
     setError(null)
@@ -71,12 +77,18 @@ function CategoriesTab() {
   }
 
   const submit = async () => {
-    if (!name.trim()) return setError('이름을 입력해주세요')
+    if (!major.trim()) return setError('대분류를 입력해주세요')
+    const payload = {
+      major: major.trim(),
+      minor: minor.trim() || '미분류',
+      kind,
+      nature,
+    }
     try {
       if (editing) {
-        await updateCategory(editing.id, { name: name.trim(), kind, nature })
+        await updateCategory(editing.id, payload)
       } else {
-        await createCategory({ name: name.trim(), kind, nature })
+        await createCategory(payload)
       }
       setOpen(false)
     } catch (e) {
@@ -99,16 +111,27 @@ function CategoriesTab() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>이름</TableHead>
+              <TableHead>대분류</TableHead>
+              <TableHead>소분류</TableHead>
               <TableHead>구분</TableHead>
               <TableHead>성격</TableHead>
               <TableHead className="w-24"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {categories.map((c) => (
+            {categories.map((c, i) => (
               <TableRow key={c.id}>
-                <TableCell>{c.name}</TableCell>
+                <TableCell>
+                  {/* 같은 대분류가 연속되면 첫 행에만 표시해 그룹처럼 보이게 한다 */}
+                  {i > 0 &&
+                  categories[i - 1].major === c.major &&
+                  categories[i - 1].kind === c.kind ? (
+                    <span className="text-muted-foreground">·</span>
+                  ) : (
+                    c.major
+                  )}
+                </TableCell>
+                <TableCell>{c.minor}</TableCell>
                 <TableCell>
                   <Badge variant={c.kind === 'income' ? 'secondary' : 'outline'}>
                     {c.kind === 'income' ? '수입' : '지출'}
@@ -131,8 +154,28 @@ function CategoriesTab() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1">
-              <Label htmlFor="cat-name">이름</Label>
-              <Input id="cat-name" value={name} onChange={(e) => setName(e.target.value)} />
+              <Label htmlFor="cat-major">대분류</Label>
+              <Input
+                id="cat-major"
+                list="cat-major-options"
+                placeholder="예: 식비"
+                value={major}
+                onChange={(e) => setMajor(e.target.value)}
+              />
+              <datalist id="cat-major-options">
+                {majorOptions.map((m) => (
+                  <option key={m} value={m} />
+                ))}
+              </datalist>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="cat-minor">소분류</Label>
+              <Input
+                id="cat-minor"
+                placeholder="비우면 '미분류'"
+                value={minor}
+                onChange={(e) => setMinor(e.target.value)}
+              />
             </div>
             <div className="space-y-1">
               <Label>구분</Label>

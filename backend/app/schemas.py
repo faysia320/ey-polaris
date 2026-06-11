@@ -47,7 +47,8 @@ CategoryNature = Literal["fixed", "variable"]
 
 
 class CategoryCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    major: str = Field(min_length=1, max_length=100, description="대분류")
+    minor: str = Field(default="미분류", min_length=1, max_length=100, description="소분류")
     kind: CategoryKind
     nature: CategoryNature = "variable"
 
@@ -139,7 +140,7 @@ class BudgetOut(BudgetCreate):
 
 # ---------- Analytics ----------
 class CategoryAmount(BaseModel):
-    category_id: int
+    # 대시보드 도넛 차트용 대분류 집계 (소분류 56종을 그대로 내보내면 과밀)
     category_name: str
     amount: int
 
@@ -181,3 +182,18 @@ class AssetsOut(BaseModel):
     accounts: list[AccountBalance]
     total: int
     trend: list[MonthlyPoint]
+
+
+# ---------- Excel Import ----------
+class ImportSkippedRow(BaseModel):
+    row: int = Field(description="엑셀 행 번호 (헤더 포함 1부터)")
+    reason: str
+
+
+class ImportResult(BaseModel):
+    month: str
+    deleted_count: int = Field(description="교체 삭제된 기존 가져오기 거래 수")
+    created_count: int
+    skipped: list[ImportSkippedRow]
+    created_categories: list[str] = Field(description="자동 생성된 카테고리 표시명")
+    created_accounts: list[str] = Field(description="자동 생성된 자산 계정명")

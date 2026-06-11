@@ -28,4 +28,7 @@ export const api = {
   put: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   delete: (path: string) => request<void>(path, { method: 'DELETE' }),
+  /** multipart 업로드 — Content-Type은 브라우저가 boundary 포함해 자동 설정해야 한다 */
+  upload: <T>(path: string, body: FormData) =>
+    request<T>(path, { method: 'POST', body, headers: {} }),
 }

@@ -11,14 +11,18 @@ router = APIRouter(prefix="/categories", tags=["categories"])
 
 @router.get("", response_model=list[schemas.CategoryOut])
 def list_categories(db: Session = Depends(get_db)):
-    return db.scalars(select(models.Category).order_by(models.Category.id)).all()
+    return db.scalars(
+        select(models.Category).order_by(
+            models.Category.kind, models.Category.major, models.Category.minor
+        )
+    ).all()
 
 
 @router.post("", response_model=schemas.CategoryOut, status_code=201)
 def create_category(payload: schemas.CategoryCreate, db: Session = Depends(get_db)):
     category = models.Category(**payload.model_dump())
     db.add(category)
-    commit_or_conflict(db, f"이미 존재하는 카테고리입니다: {payload.name}")
+    commit_or_conflict(db, f"이미 존재하는 카테고리입니다: {payload.major} > {payload.minor}")
     return category
 
 
@@ -29,7 +33,7 @@ def update_category(
     category = get_or_404(db, models.Category, category_id, "카테고리")
     for key, value in payload.model_dump().items():
         setattr(category, key, value)
-    commit_or_conflict(db, f"이미 존재하는 카테고리입니다: {payload.name}")
+    commit_or_conflict(db, f"이미 존재하는 카테고리입니다: {payload.major} > {payload.minor}")
     return category
 
 

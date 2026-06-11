@@ -16,7 +16,8 @@ export interface AccountInput {
 }
 
 export interface CategoryInput {
-  name: string
+  major: string
+  minor: string
   kind: TransactionKind
   nature: CategoryNature
 }

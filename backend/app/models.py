@@ -33,17 +33,29 @@ class Account(Base):
 
 
 class Category(Base):
-    """수입/지출 카테고리. nature: fixed(정기 궤도) | variable(유성우)."""
+    """수입/지출 카테고리 — 대분류(major)/소분류(minor) 2단계.
+
+    뱅크샐러드 엑셀 분류 체계와 일치시킨다. 소분류가 없으면 '미분류'.
+    nature: fixed(정기 궤도) | variable(유성우).
+    """
 
     __tablename__ = "categories"
-    __table_args__ = (UniqueConstraint("name", "kind", name="uq_categories_name_kind"),)
+    __table_args__ = (
+        UniqueConstraint("major", "minor", "kind", name="uq_categories_major_minor_kind"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100))
+    major: Mapped[str] = mapped_column(String(100))  # 대분류
+    minor: Mapped[str] = mapped_column(String(100), default="미분류")  # 소분류
     kind: Mapped[str] = mapped_column(String(10))  # income | expense
     nature: Mapped[str] = mapped_column(String(10), default="variable")  # fixed | variable
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="category")
+
+    @property
+    def display_name(self) -> str:
+        """표시명 — 소분류가 '미분류'면 대분류만."""
+        return self.major if self.minor == "미분류" else f"{self.major} > {self.minor}"
 
 
 class Transaction(Base):
@@ -61,6 +73,7 @@ class Transaction(Base):
         ForeignKey("members.id", ondelete="SET NULL"), nullable=True
     )
     memo: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    source: Mapped[str] = mapped_column(String(10), default="manual")  # manual | import
 
     category: Mapped["Category"] = relationship(back_populates="transactions")
     account: Mapped["Account"] = relationship(back_populates="transactions")

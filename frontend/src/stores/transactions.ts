@@ -7,6 +7,8 @@ import type { Transaction, TransactionInput, TransactionKind } from '@/types'
 export interface TransactionFilters {
   month: string | null
   kind: TransactionKind | null
+  /** 대분류 — 소분류 미선택 시 대분류 전체를 포괄 */
+  major: string | null
   category_id: number | null
 }
 
@@ -14,6 +16,7 @@ function toQuery(filters: TransactionFilters): string {
   const params = new URLSearchParams()
   if (filters.month) params.set('month', filters.month)
   if (filters.kind) params.set('kind', filters.kind)
+  if (filters.major) params.set('major', filters.major)
   if (filters.category_id) params.set('category_id', String(filters.category_id))
   const qs = params.toString()
   return qs ? `?${qs}` : ''
@@ -32,7 +35,7 @@ interface TransactionState {
 
 export const useTransactionStore = create<TransactionState>((set, get) => ({
   items: [],
-  filters: { month: currentMonth(), kind: null, category_id: null },
+  filters: { month: currentMonth(), kind: null, major: null, category_id: null },
   loading: false,
 
   fetch: async () => {

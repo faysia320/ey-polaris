@@ -25,7 +25,10 @@ export interface Account {
 
 export interface Category {
   id: number
-  name: string
+  /** 대분류 */
+  major: string
+  /** 소분류 — 없으면 '미분류' */
+  minor: string
   kind: TransactionKind
   nature: CategoryNature
 }
@@ -70,7 +73,7 @@ export interface BudgetProgress {
 }
 
 export interface CategoryAmount {
-  category_id: number
+  /** 대분류 집계 라벨 */
   category_name: string
   amount: number
 }
@@ -130,4 +133,19 @@ export interface Assets {
   accounts: AccountBalance[]
   total: number
   trend: MonthlyPoint[]
+}
+
+export interface ImportSkippedRow {
+  /** 엑셀 행 번호 (헤더 포함 1부터) */
+  row: number
+  reason: string
+}
+
+export interface ImportResult {
+  month: string
+  deleted_count: number
+  created_count: number
+  skipped: ImportSkippedRow[]
+  created_categories: string[]
+  created_accounts: string[]
 }

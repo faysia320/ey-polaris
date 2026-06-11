@@ -15,7 +15,7 @@ def _to_out(b: models.Budget) -> schemas.BudgetOut:
         year_month=b.year_month,
         category_id=b.category_id,
         amount=b.amount,
-        category_name=b.category.name,
+        category_name=b.category.display_name,
     )
 
 
