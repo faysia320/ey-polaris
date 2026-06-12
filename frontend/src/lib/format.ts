@@ -1,4 +1,13 @@
+import type { TransactionKind } from '@/types'
+
 const krw = new Intl.NumberFormat('ko-KR')
+
+/** 거래/카테고리 구분 한글 라벨 */
+export const KIND_LABEL: Record<TransactionKind, string> = {
+  income: '수입',
+  expense: '지출',
+  transfer: '이체',
+}
 
 /** 카테고리 표시명 — 소분류가 '미분류'면 대분류만 (백엔드 display_name과 동일 규칙). */
 export function categoryLabel(c: { major: string; minor: string }): string {

@@ -1,8 +1,11 @@
 """뱅크샐러드 가계부 엑셀("가계부 내역" 시트) 파싱.
 
 행 변환 규칙:
-- 이체 타입은 지원하지 않음 — 카드 지출과 카드대금 출금이 모두 기록되어 있어
-  수입/지출로 반영하면 이중 계산이 되므로 스킵한다.
+- 이체 타입은 자동 반영하지 않고 "검토 대상"으로 분리 반환한다 — 행마다 한쪽
+  다리(결제수단 계정)만 기록되고 상대 계정은 자유 텍스트뿐이라, 업로드 확정
+  시점에 사용자가 수입/지출/이체(상대 계정 지정)/건너뛰기를 결정한다.
+  단, 내계좌이체끼리 같은 날짜·같은 금액·반대 부호·다른 결제수단이면 자동
+  페어링해 한 건의 이체(출금→입금)로 제안한다.
 - 지출+양수(환불)는 수입으로 반영하되 카테고리는 '환불 > 미분류', 원래 분류는 memo에 보존.
 - 금액 0원, KRW 외 통화, 타입과 부호가 모순인 행은 스킵하고 사유를 남긴다.
 """
@@ -44,6 +47,24 @@ class SkippedRow:
     reason: str
 
 
+@dataclass
+class ReviewRow:
+    """이체 타입 행 — 자동 반영하지 않고 사용자 결정을 기다리는 검토 대상.
+
+    amount는 부호를 보존한다 (음수=결제수단 계정에서 출금, 양수=입금).
+    pair_row는 내계좌이체 자동 페어링 결과 — 상대 다리의 엑셀 행 번호.
+    """
+
+    row: int
+    date: date
+    major: str
+    minor: str
+    description: str | None
+    amount: int
+    account_name: str
+    pair_row: int | None = None
+
+
 def _to_date(value) -> date | None:
     if isinstance(value, datetime):
         return value.date()
@@ -58,10 +79,12 @@ def _clean(value) -> str:
     return str(value).strip() if value is not None else ""
 
 
-def parse_ledger(content: bytes, month: str) -> tuple[list[ParsedRow], list[SkippedRow], int]:
+def parse_ledger(
+    content: bytes, month: str
+) -> tuple[list[ParsedRow], list[ReviewRow], list[SkippedRow], int]:
     """지정 월(YYYY-MM)의 행을 파싱한다.
 
-    returns: (유효 행 목록, 스킵 행 목록, 해당 월 전체 행 수)
+    returns: (유효 행 목록, 이체 검토 행 목록, 스킵 행 목록, 해당 월 전체 행 수)
     raises: ExcelFormatError — 시트 부재, 필수 컬럼 누락 등 파일 형식 문제
     """
     try:
@@ -85,6 +108,7 @@ def parse_ledger(content: bytes, month: str) -> tuple[list[ParsedRow], list[Skip
         memo_idx = col.get("메모")
 
         parsed: list[ParsedRow] = []
+        review: list[ReviewRow] = []
         skipped: list[SkippedRow] = []
         month_rows = 0
 
@@ -109,10 +133,7 @@ def parse_ledger(content: bytes, month: str) -> tuple[list[ParsedRow], list[Skip
                 continue
 
             tx_type = _clean(cell("타입"))
-            if tx_type == "이체":
-                skip("이체 거래는 지원하지 않습니다")
-                continue
-            if tx_type not in ("지출", "수입"):
+            if tx_type not in ("지출", "수입", "이체"):
                 skip(f"알 수 없는 타입입니다: {tx_type or '(빈 값)'}")
                 continue
 
@@ -128,6 +149,21 @@ def parse_ledger(content: bytes, month: str) -> tuple[list[ParsedRow], list[Skip
             excel_memo = _clean(values[memo_idx] if memo_idx is not None and memo_idx < len(values) else None)
             if excel_memo:
                 memo = f"{memo} — {excel_memo}" if memo else excel_memo
+
+            if tx_type == "이체":
+                # 자동 반영하지 않고 검토 대상으로 — 부호(입출금 방향)를 보존한다
+                review.append(
+                    ReviewRow(
+                        row=row_no,
+                        date=tx_date,
+                        major=major,
+                        minor=minor,
+                        description=memo[:MEMO_MAX] if memo else None,
+                        amount=amount,
+                        account_name=_clean(cell("결제수단")) or "미지정",
+                    )
+                )
+                continue
 
             if tx_type == "수입" and amount < 0:
                 skip("수입인데 금액이 음수입니다")
@@ -154,9 +190,36 @@ def parse_ledger(content: bytes, month: str) -> tuple[list[ParsedRow], list[Skip
                 )
             )
 
-        return parsed, skipped, month_rows
+        _pair_own_transfers(review)
+        return parsed, review, skipped, month_rows
     finally:
         workbook.close()
+
+
+OWN_TRANSFER_MAJOR = "내계좌이체"
+
+
+def _pair_own_transfers(review: list[ReviewRow]) -> None:
+    """내계좌이체 행의 출금(-)·입금(+) 다리를 1:1 페어링한다.
+
+    조건: 같은 날짜, 같은 절대 금액, 반대 부호, 다른 결제수단.
+    페어된 두 행은 pair_row로 서로를 가리키며, 확정 시 한 건의 이체가 된다.
+    """
+    own = [r for r in review if r.major == OWN_TRANSFER_MAJOR]
+    incoming = [r for r in own if r.amount > 0]
+    used: set[int] = set()
+    for out in (r for r in own if r.amount < 0):
+        for i, inc in enumerate(incoming):
+            if i in used:
+                continue
+            if (
+                inc.date == out.date
+                and inc.amount == -out.amount
+                and inc.account_name != out.account_name
+            ):
+                out.pair_row, inc.pair_row = inc.row, out.row
+                used.add(i)
+                break
 
 
 def guess_account_type(name: str) -> str:

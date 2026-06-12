@@ -43,7 +43,8 @@ class AccountOut(AccountCreate):
 
 
 # ---------- Category ----------
-CategoryKind = Literal["income", "expense"]
+# 거래/카테고리가 공유하는 구분 — transfer는 계좌 간 자산 이동(수입/지출 통계 제외)
+CategoryKind = Literal["income", "expense", "transfer"]
 CategoryNature = Literal["fixed", "variable"]
 
 
@@ -70,6 +71,9 @@ class TransactionCreate(BaseModel):
     kind: CategoryKind
     category_id: int
     account_id: int
+    counter_account_id: int | None = Field(
+        default=None, description="이체(transfer) 전용 입금 계정 — account_id가 출금 계정"
+    )
     member_id: int | None = None
     memo: str | None = Field(default=None, max_length=255)
 
@@ -83,6 +87,7 @@ class TransactionOut(TransactionCreate):
     id: int
     category_name: str
     account_name: str
+    counter_account_name: str | None = None
     member_name: str | None = None
 
 
@@ -192,10 +197,44 @@ class ImportSkippedRow(BaseModel):
     reason: str
 
 
+# 이체 검토 행에 대한 사용자 결정 — transfer는 페어 행이 아니면 상대 계정 필수
+ImportAction = Literal["income", "expense", "transfer", "skip"]
+
+
+class ImportReviewRow(BaseModel):
+    row: int = Field(description="엑셀 행 번호 (헤더 포함 1부터)")
+    date: date_type
+    major: str = Field(description="원본 대분류 (이체/내계좌이체/카드대금 등)")
+    minor: str
+    description: str | None = None
+    amount: int = Field(description="부호 보존 — 음수=결제수단에서 출금, 양수=입금")
+    account_name: str = Field(description="결제수단 (행 자신의 계정)")
+    pair_row: int | None = Field(default=None, description="내계좌이체 자동 페어 상대 행 번호")
+    suggested: ImportAction = Field(description="기본 제안")
+
+
+class ImportPreview(BaseModel):
+    month: str
+    month_rows: int = Field(description="해당 월 전체 행 수")
+    importable_count: int = Field(description="검토 없이 적재되는 수입/지출 행 수")
+    review: list[ImportReviewRow]
+    skipped: list[ImportSkippedRow]
+
+
+class ImportDecision(BaseModel):
+    row: int
+    action: ImportAction
+    counter_account_id: int | None = Field(
+        default=None, description="transfer 전용 상대 계정 — 페어 행이면 생략 가능"
+    )
+
+
 class ImportResult(BaseModel):
     month: str
     deleted_count: int = Field(description="교체 삭제된 기존 가져오기 거래 수")
     created_count: int
+    transfer_count: int = Field(default=0, description="이체로 적재된 거래 수 (검토 결정)")
+    converted_count: int = Field(default=0, description="수입/지출로 전환 적재된 검토 행 수")
     skipped: list[ImportSkippedRow]
     created_categories: list[str] = Field(description="자동 생성된 카테고리 표시명")
     created_accounts: list[str] = Field(description="자동 생성된 자산 계정명")

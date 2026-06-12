@@ -28,7 +28,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { formatKRW } from '@/lib/format'
+import { formatKRW, KIND_LABEL } from '@/lib/format'
 import { useMasterDataStore } from '@/stores/masterData'
 import type { Account, AccountType, Category, CategoryNature, Member, TransactionKind } from '@/types'
 
@@ -160,7 +160,7 @@ function CategoriesTab() {
                         )}
                         {g.major}
                         <Badge variant={g.kind === 'income' ? 'secondary' : 'outline'}>
-                          {g.kind === 'income' ? '수입' : '지출'}
+                          {KIND_LABEL[g.kind]}
                         </Badge>
                         <span className="text-xs font-normal text-muted-foreground">
                           소분류 {g.items.length}개
@@ -175,7 +175,7 @@ function CategoriesTab() {
                         <TableCell>{c.minor}</TableCell>
                         <TableCell>
                           <Badge variant={c.kind === 'income' ? 'secondary' : 'outline'}>
-                            {c.kind === 'income' ? '수입' : '지출'}
+                            {KIND_LABEL[c.kind]}
                           </Badge>
                         </TableCell>
                         <TableCell>{c.nature === 'fixed' ? '🛸 정기 궤도 (고정)' : '☄️ 유성우 (변동)'}</TableCell>
@@ -230,6 +230,7 @@ function CategoriesTab() {
                 <SelectContent>
                   <SelectItem value="expense">지출</SelectItem>
                   <SelectItem value="income">수입</SelectItem>
+                  <SelectItem value="transfer">이체</SelectItem>
                 </SelectContent>
               </Select>
             </div>

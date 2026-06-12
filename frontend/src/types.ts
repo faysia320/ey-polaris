@@ -6,7 +6,8 @@ export type AccountType =
   | 'stock'
   | 'real_estate'
   | 'other'
-export type TransactionKind = 'income' | 'expense'
+/** transfer는 계좌 간 자산 이동 — 수입/지출 통계에 포함되지 않는다 */
+export type TransactionKind = 'income' | 'expense' | 'transfer'
 export type CategoryNature = 'fixed' | 'variable'
 
 export interface Member {
@@ -42,10 +43,13 @@ export interface Transaction {
   kind: TransactionKind
   category_id: number
   account_id: number
+  /** 이체 전용 — 입금 계정 (account_id가 출금 계정) */
+  counter_account_id: number | null
   member_id: number | null
   memo: string | null
   category_name: string
   account_name: string
+  counter_account_name: string | null
   member_name: string | null
 }
 
@@ -55,6 +59,8 @@ export interface TransactionInput {
   kind: TransactionKind
   category_id: number
   account_id: number
+  /** 이체 전용 — 입금 계정. 수입/지출은 null */
+  counter_account_id: number | null
   member_id: number | null
   memo: string | null
 }
@@ -144,10 +150,49 @@ export interface ImportSkippedRow {
   reason: string
 }
 
+/** 이체 검토 행에 대한 사용자 결정 */
+export type ImportAction = 'income' | 'expense' | 'transfer' | 'skip'
+
+export interface ImportReviewRow {
+  /** 엑셀 행 번호 (헤더 포함 1부터) */
+  row: number
+  date: string
+  /** 원본 대분류 (이체/내계좌이체/카드대금 등) */
+  major: string
+  minor: string
+  description: string | null
+  /** 부호 보존 — 음수=결제수단에서 출금, 양수=입금 */
+  amount: number
+  account_name: string
+  /** 내계좌이체 자동 페어 상대 행 번호 */
+  pair_row: number | null
+  suggested: ImportAction
+}
+
+export interface ImportPreview {
+  month: string
+  month_rows: number
+  /** 검토 없이 적재되는 수입/지출 행 수 */
+  importable_count: number
+  review: ImportReviewRow[]
+  skipped: ImportSkippedRow[]
+}
+
+export interface ImportDecision {
+  row: number
+  action: ImportAction
+  /** transfer 전용 상대 계정 — 페어 행이면 생략 가능 */
+  counter_account_id?: number | null
+}
+
 export interface ImportResult {
   month: string
   deleted_count: number
   created_count: number
+  /** 이체로 적재된 거래 수 (검토 결정) */
+  transfer_count: number
+  /** 수입/지출로 전환 적재된 검토 행 수 */
+  converted_count: number
   skipped: ImportSkippedRow[]
   created_categories: string[]
   created_accounts: string[]

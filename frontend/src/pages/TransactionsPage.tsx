@@ -52,11 +52,17 @@ import {
 import { MemberFilterSelect } from '@/components/members/MemberFilterSelect'
 import { TransactionCalendar } from '@/components/transactions/TransactionCalendar'
 import { api } from '@/lib/api'
-import { addMonths, categoryLabel, currentMonth, formatKRW, todayISO } from '@/lib/format'
+import { addMonths, categoryLabel, currentMonth, formatKRW, KIND_LABEL, todayISO } from '@/lib/format'
 import { useMasterDataStore } from '@/stores/masterData'
 import { useMemberFilterStore } from '@/stores/memberFilter'
 import { useTransactionStore } from '@/stores/transactions'
-import type { ImportResult, Transaction, TransactionKind } from '@/types'
+import type {
+  ImportAction,
+  ImportPreview,
+  ImportResult,
+  Transaction,
+  TransactionKind,
+} from '@/types'
 
 interface FormState {
   date: string
@@ -65,6 +71,8 @@ interface FormState {
   category_major: string
   category_id: string
   account_id: string
+  /** 이체 전용 — 입금 계정 (account_id가 출금 계정) */
+  counter_account_id: string
   member_id: string
   amount: string
   memo: string
@@ -76,10 +84,24 @@ const emptyForm = (): FormState => ({
   category_major: '',
   category_id: '',
   account_id: '',
+  counter_account_id: '',
   member_id: 'none',
   amount: '',
   memo: '',
 })
+
+/** 구분별 배지 색 — 수입/지출/이체를 시각적으로 구별 */
+const KIND_BADGE_VARIANT = {
+  income: 'secondary',
+  expense: 'outline',
+  transfer: 'default',
+} as const
+
+const kindAmountClass = (kind: TransactionKind) =>
+  kind === 'income' ? 'text-emerald-400' : kind === 'expense' ? 'text-rose-400' : 'text-sky-400'
+
+const kindAmountSign = (kind: TransactionKind) =>
+  kind === 'income' ? '+' : kind === 'expense' ? '-' : ''
 
 export function TransactionsPage() {
   const { items, filters, fetch, setFilters, create, update, remove } = useTransactionStore()
@@ -102,6 +124,11 @@ export function TransactionsPage() {
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  // 이체 검토 단계 — 미리보기 결과와 행별 결정 (행번호 → 결정)
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
+  const [reviewDecisions, setReviewDecisions] = useState<
+    Record<number, { action: ImportAction; counter_account_id: string }>
+  >({})
 
   // 전역 구성원 필터를 거래 필터에 동기화 — 마운트 시 조회를 겸한다 (setFilters가 fetch 포함)
   useEffect(() => {
@@ -151,6 +178,7 @@ export function TransactionsPage() {
       category_major: categories.find((c) => c.id === t.category_id)?.major ?? '',
       category_id: String(t.category_id),
       account_id: String(t.account_id),
+      counter_account_id: t.counter_account_id ? String(t.counter_account_id) : '',
       member_id: t.member_id ? String(t.member_id) : 'none',
       amount: String(t.amount),
       memo: t.memo ?? '',
@@ -165,13 +193,21 @@ export function TransactionsPage() {
     if (!Number.isInteger(amount) || amount <= 0)
       return setFormError('금액은 1원 이상의 정수여야 합니다')
     if (!form.category_id) return setFormError('카테고리를 선택해주세요')
-    if (!form.account_id) return setFormError('자산 계정을 선택해주세요')
+    if (!form.account_id)
+      return setFormError(form.kind === 'transfer' ? '출금 계정을 선택해주세요' : '자산 계정을 선택해주세요')
+    if (form.kind === 'transfer') {
+      if (!form.counter_account_id) return setFormError('입금 계정을 선택해주세요')
+      if (form.counter_account_id === form.account_id)
+        return setFormError('출금 계정과 입금 계정은 서로 달라야 합니다')
+    }
     const payload = {
       date: form.date,
       kind: form.kind,
       amount,
       category_id: Number(form.category_id),
       account_id: Number(form.account_id),
+      counter_account_id:
+        form.kind === 'transfer' ? Number(form.counter_account_id) : null,
       member_id: form.member_id === 'none' ? null : Number(form.member_id),
       memo: form.memo.trim() || null,
     }
@@ -205,8 +241,8 @@ export function TransactionsPage() {
         accessorKey: 'kind',
         header: '구분',
         cell: ({ row }) => (
-          <Badge variant={row.original.kind === 'income' ? 'secondary' : 'outline'}>
-            {row.original.kind === 'income' ? '수입' : '지출'}
+          <Badge variant={KIND_BADGE_VARIANT[row.original.kind]}>
+            {KIND_LABEL[row.original.kind]}
           </Badge>
         ),
       },
@@ -223,17 +259,21 @@ export function TransactionsPage() {
           </Button>
         ),
         cell: ({ row }) => (
-          <span
-            className={
-              row.original.kind === 'income' ? 'text-emerald-400' : 'text-rose-400'
-            }
-          >
-            {row.original.kind === 'income' ? '+' : '-'}
+          <span className={kindAmountClass(row.original.kind)}>
+            {kindAmountSign(row.original.kind)}
             {formatKRW(row.original.amount)}
           </span>
         ),
       },
-      { accessorKey: 'account_name', header: '계정' },
+      {
+        accessorKey: 'account_name',
+        header: '계정',
+        cell: ({ row }) =>
+          // 이체는 출금 → 입금 흐름을 함께 표시
+          row.original.kind === 'transfer' && row.original.counter_account_name
+            ? `${row.original.account_name} → ${row.original.counter_account_name}`
+            : row.original.account_name,
+      },
       {
         accessorKey: 'member_name',
         header: '구성원',
@@ -296,6 +336,29 @@ export function TransactionsPage() {
     (c) => c.major === filters.major && (!filters.kind || c.kind === filters.kind),
   )
 
+  const commitImport = async (preview: ImportPreview | null) => {
+    if (!importFile) return
+    const decisions = (preview?.review ?? []).map((r) => {
+      const d = reviewDecisions[r.row]
+      return {
+        row: r.row,
+        action: d?.action ?? 'skip',
+        counter_account_id: d?.counter_account_id ? Number(d.counter_account_id) : null,
+      }
+    })
+    const body = new FormData()
+    body.append('file', importFile)
+    body.append('month', importMonth)
+    body.append('member_id', importMemberId)
+    body.append('decisions', JSON.stringify(decisions))
+    const result = await api.upload<ImportResult>('/transactions/import', body)
+    setImportResult(result)
+    setImportPreview(null)
+    // 새 카테고리/계정이 생겼을 수 있으니 기준정보까지 재조회
+    await Promise.all([fetch(), fetchAll()])
+  }
+
+  // 1단계: 미리보기 — 이체 검토 행이 없으면 곧바로 확정까지 진행한다
   const runImport = async () => {
     if (!importFile) return setImportError('업로드할 .xlsx 파일을 선택해주세요')
     if (!importMonth) return setImportError('가져올 월을 선택해주세요')
@@ -306,11 +369,51 @@ export function TransactionsPage() {
       const body = new FormData()
       body.append('file', importFile)
       body.append('month', importMonth)
-      body.append('member_id', importMemberId)
-      const result = await api.upload<ImportResult>('/transactions/import', body)
-      setImportResult(result)
-      // 새 카테고리/계정이 생겼을 수 있으니 기준정보까지 재조회
-      await Promise.all([fetch(), fetchAll()])
+      const preview = await api.upload<ImportPreview>('/transactions/import/preview', body)
+      if (preview.review.length === 0) {
+        await commitImport(preview)
+      } else {
+        // 기본 제안으로 결정 초기화 후 검토 단계 진입
+        const initial: Record<number, { action: ImportAction; counter_account_id: string }> = {}
+        for (const r of preview.review) {
+          initial[r.row] = { action: r.suggested, counter_account_id: '' }
+        }
+        setReviewDecisions(initial)
+        setImportPreview(preview)
+      }
+    } catch (e) {
+      setImportError((e as Error).message)
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  /** 페어 자동 이체로 처리되는 행인지 — 양쪽 다리 모두 이체+상대 계정 미지정일 때 */
+  const isPairAuto = (row: number, pairRow: number | null) => {
+    if (!pairRow) return false
+    const mine = reviewDecisions[row]
+    const pair = reviewDecisions[pairRow]
+    return (
+      mine?.action === 'transfer' &&
+      !mine.counter_account_id &&
+      pair?.action === 'transfer' &&
+      !pair.counter_account_id
+    )
+  }
+
+  // 2단계: 검토 확정
+  const confirmReview = async () => {
+    if (!importPreview) return
+    for (const r of importPreview.review) {
+      const d = reviewDecisions[r.row]
+      if (d?.action === 'transfer' && !isPairAuto(r.row, r.pair_row) && !d.counter_account_id) {
+        return setImportError(`${r.row}행: 이체로 처리하려면 상대 계정을 선택해주세요`)
+      }
+    }
+    setImporting(true)
+    setImportError(null)
+    try {
+      await commitImport(importPreview)
     } catch (e) {
       setImportError((e as Error).message)
     } finally {
@@ -324,6 +427,8 @@ export function TransactionsPage() {
     setImportMemberId('')
     setImportError(null)
     setImportResult(null)
+    setImportPreview(null)
+    setReviewDecisions({})
     setImportOpen(true)
   }
 
@@ -396,6 +501,7 @@ export function TransactionsPage() {
               <SelectItem value="all">전체</SelectItem>
               <SelectItem value="income">수입</SelectItem>
               <SelectItem value="expense">지출</SelectItem>
+              <SelectItem value="transfer">이체</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -528,7 +634,7 @@ export function TransactionsPage() {
           {(filters.kind || filters.major || filters.category_id) && (
             <p className="text-center text-xs text-muted-foreground">
               {[
-                filters.kind && (filters.kind === 'income' ? '수입' : '지출'),
+                filters.kind && KIND_LABEL[filters.kind],
                 filters.category_id
                   ? (() => {
                       const c = categories.find((cat) => cat.id === filters.category_id)
@@ -556,16 +662,18 @@ export function TransactionsPage() {
               {dayTransactions.map((t) => (
                 <div key={t.id} className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
-                    <Badge variant={t.kind === 'income' ? 'secondary' : 'outline'}>
-                      {t.kind === 'income' ? '수입' : '지출'}
-                    </Badge>
+                    <Badge variant={KIND_BADGE_VARIANT[t.kind]}>{KIND_LABEL[t.kind]}</Badge>
                     <span>{t.category_name}</span>
-                    <span className="text-xs text-muted-foreground">{t.account_name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t.kind === 'transfer' && t.counter_account_name
+                        ? `${t.account_name} → ${t.counter_account_name}`
+                        : t.account_name}
+                    </span>
                     {t.memo && <span className="text-xs text-muted-foreground">{t.memo}</span>}
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className={t.kind === 'income' ? 'text-emerald-400' : 'text-rose-400'}>
-                      {t.kind === 'income' ? '+' : '-'}
+                    <span className={kindAmountClass(t.kind)}>
+                      {kindAmountSign(t.kind)}
                       {formatKRW(t.amount)}
                     </span>
                     <Button variant="ghost" size="icon-sm" onClick={() => openEdit(t)}>
@@ -591,7 +699,7 @@ export function TransactionsPage() {
           <DialogHeader>
             <DialogTitle>{editing ? '거래 수정' : '거래 추가'}</DialogTitle>
             <DialogDescription>
-              {editing ? '거래 내용을 수정합니다.' : '새 지출/수입 거래를 기록합니다.'}
+              {editing ? '거래 내용을 수정합니다.' : '새 지출/수입/이체 거래를 기록합니다.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -614,6 +722,7 @@ export function TransactionsPage() {
                       kind: v as TransactionKind,
                       category_major: '',
                       category_id: '',
+                      counter_account_id: '',
                     })
                   }
                 >
@@ -623,6 +732,7 @@ export function TransactionsPage() {
                   <SelectContent>
                     <SelectItem value="expense">지출</SelectItem>
                     <SelectItem value="income">수입</SelectItem>
+                    <SelectItem value="transfer">이체</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -678,7 +788,7 @@ export function TransactionsPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>자산 계정</Label>
+                <Label>{form.kind === 'transfer' ? '출금 계정' : '자산 계정'}</Label>
                 <Select
                   value={form.account_id || undefined}
                   onValueChange={(v) => setForm({ ...form, account_id: v })}
@@ -697,6 +807,28 @@ export function TransactionsPage() {
                   </SelectContent>
                 </Select>
               </div>
+              {form.kind === 'transfer' && (
+                <div className="space-y-1">
+                  <Label>입금 계정</Label>
+                  <Select
+                    value={form.counter_account_id || undefined}
+                    onValueChange={(v) => setForm({ ...form, counter_account_id: v })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts
+                        .filter((a) => a.is_active && String(a.id) !== form.account_id)
+                        .map((a) => (
+                          <SelectItem key={a.id} value={String(a.id)}>
+                            {a.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-1">
                 <Label>구성원</Label>
                 <Select
@@ -738,11 +870,17 @@ export function TransactionsPage() {
       </Dialog>
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className={importPreview && !importResult ? 'sm:max-w-2xl' : 'sm:max-w-md'}
+        >
           <DialogHeader>
-            <DialogTitle>엑셀 업로드</DialogTitle>
+            <DialogTitle>
+              {importPreview && !importResult ? '이체 내역 검토' : '엑셀 업로드'}
+            </DialogTitle>
             <DialogDescription>
-              뱅크샐러드 내보내기 파일의 "가계부 내역"에서 선택한 달만 가져옵니다.
+              {importPreview && !importResult
+                ? '이체 타입 행은 자동 반영되지 않아요. 행마다 처리 방법을 정해주세요.'
+                : '뱅크샐러드 내보내기 파일의 "가계부 내역"에서 선택한 달만 가져옵니다.'}
             </DialogDescription>
           </DialogHeader>
           {importResult ? (
@@ -750,6 +888,9 @@ export function TransactionsPage() {
               <p>
                 <span className="font-medium">{importResult.month}</span> 가져오기 완료 — 등록{' '}
                 {importResult.created_count}건
+                {importResult.transfer_count > 0 && ` (이체 ${importResult.transfer_count}건)`}
+                {importResult.converted_count > 0 &&
+                  ` (수입/지출 전환 ${importResult.converted_count}건)`}
                 {importResult.deleted_count > 0 && ` (기존 ${importResult.deleted_count}건 교체)`}
                 {importResult.skipped.length > 0 && `, 건너뜀 ${importResult.skipped.length}건`}
               </p>
@@ -772,6 +913,103 @@ export function TransactionsPage() {
                   ))}
                 </div>
               )}
+            </div>
+          ) : importPreview ? (
+            <div className="space-y-3 text-sm">
+              <p className="text-xs text-muted-foreground">
+                수입/지출 {importPreview.importable_count}건은 바로 등록돼요. 아래 이체{' '}
+                {importPreview.review.length}건만 정해주시면 돼요 — 내계좌이체 짝이 맞는 행은
+                자동으로 한 건의 이체가 돼요.
+              </p>
+              <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
+                {importPreview.review.map((r) => {
+                  const decision = reviewDecisions[r.row]
+                  const pairAuto = isPairAuto(r.row, r.pair_row)
+                  const pairRow = r.pair_row
+                    ? importPreview.review.find((p) => p.row === r.pair_row)
+                    : undefined
+                  return (
+                    <div key={r.row} className="space-y-2 rounded-md border p-2">
+                      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs">
+                        <span className="text-muted-foreground">
+                          {r.date} · {r.minor === '미분류' ? r.major : `${r.major} > ${r.minor}`}{' '}
+                          · {r.account_name}
+                        </span>
+                        <span className={r.amount > 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                          {r.amount > 0 ? '+' : ''}
+                          {formatKRW(r.amount)}
+                        </span>
+                      </div>
+                      {r.description && (
+                        <p className="truncate text-xs text-muted-foreground">{r.description}</p>
+                      )}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Select
+                          value={decision?.action ?? r.suggested}
+                          onValueChange={(v) =>
+                            setReviewDecisions((prev) => ({
+                              ...prev,
+                              [r.row]: {
+                                action: v as ImportAction,
+                                counter_account_id:
+                                  v === 'transfer' ? (prev[r.row]?.counter_account_id ?? '') : '',
+                              },
+                            }))
+                          }
+                        >
+                          <SelectTrigger className="w-28">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="income">수입</SelectItem>
+                            <SelectItem value="expense">지출</SelectItem>
+                            <SelectItem value="transfer">이체</SelectItem>
+                            <SelectItem value="skip">건너뛰기</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {decision?.action === 'transfer' &&
+                          (pairAuto ? (
+                            <span className="text-xs text-sky-400">
+                              자동 페어 ↔ {pairRow?.account_name} ({r.pair_row}행)
+                            </span>
+                          ) : (
+                            <Select
+                              value={decision.counter_account_id || undefined}
+                              onValueChange={(v) =>
+                                setReviewDecisions((prev) => ({
+                                  ...prev,
+                                  [r.row]: { ...prev[r.row], counter_account_id: v },
+                                }))
+                              }
+                            >
+                              <SelectTrigger className="w-44">
+                                <SelectValue
+                                  placeholder={r.amount < 0 ? '입금받을 계정' : '출금된 계정'}
+                                />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {accounts
+                                  .filter((a) => a.is_active && a.name !== r.account_name)
+                                  .map((a) => (
+                                    <SelectItem key={a.id} value={String(a.id)}>
+                                      {a.name}
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                          ))}
+                      </div>
+                      {r.major === '카드대금' && decision?.action === 'expense' && (
+                        <p className="text-xs text-amber-400">
+                          ⚠️ 카드대금을 지출로 등록하면 카드 사용 내역과 이중 계산돼요 —
+                          이체(상대: 카드 계정)를 권장해요.
+                        </p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+              {importError && <p className="text-sm text-destructive">{importError}</p>}
             </div>
           ) : (
             <div className="space-y-4">
@@ -822,6 +1060,21 @@ export function TransactionsPage() {
           <DialogFooter>
             {importResult ? (
               <Button onClick={() => setImportOpen(false)}>닫기</Button>
+            ) : importPreview ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setImportPreview(null)
+                    setImportError(null)
+                  }}
+                >
+                  이전
+                </Button>
+                <Button onClick={confirmReview} disabled={importing}>
+                  {importing ? '등록 중…' : '확정하고 가져오기'}
+                </Button>
+              </>
             ) : (
               <>
                 <Button variant="outline" onClick={() => setImportOpen(false)}>

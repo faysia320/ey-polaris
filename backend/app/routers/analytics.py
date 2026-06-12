@@ -18,7 +18,11 @@ def _month_range(month: str) -> tuple[date, date]:
 
 
 def _signed_amount():
-    """수입은 +, 지출은 - 로 부호를 붙인 금액 표현식."""
+    """수입은 +, 지출·이체 출금은 - 로 부호를 붙인 금액 표현식.
+
+    이체는 account_id(출금 계정) 기준으로 -만 반영된다 — 입금 계정(+) 다리는
+    counter_account_id 기준의 별도 집계로 가산해야 한다.
+    """
     return case(
         (models.Transaction.kind == "income", models.Transaction.amount),
         else_=-models.Transaction.amount,
@@ -113,6 +117,13 @@ def assets(
             )
         ).all()
     )
+    # 이체 입금 다리(+) — _signed_amount()는 출금 계정의 -만 반영하므로 따로 가산
+    for account_id, total in db.execute(
+        select(models.Transaction.counter_account_id, func.sum(models.Transaction.amount))
+        .where(models.Transaction.kind == "transfer")
+        .group_by(models.Transaction.counter_account_id)
+    ).all():
+        net_by_account[account_id] = net_by_account.get(account_id, 0) + int(total)
 
     # 계정·월별 최신 평가액만 적재 (평가 이력이 길어도 계정당 월 1행).
     # 평가액이 1건 이상 있는 계정의 잔액은 최신 평가액 단독으로 계산한다
@@ -169,6 +180,16 @@ def assets(
             )
         ).all()
     }
+    # 이체 입금 다리(+) — 현재 잔액 집계와 동일한 보정
+    for account_id, m, total in db.execute(
+        select(
+            models.Transaction.counter_account_id, month_expr, func.sum(models.Transaction.amount)
+        )
+        .where(models.Transaction.kind == "transfer")
+        .group_by(models.Transaction.counter_account_id, month_expr)
+    ).all():
+        key = (account_id, m)
+        account_month_net[key] = account_month_net.get(key, 0) + int(total)
 
     today = date.today()
     months: list[str] = []

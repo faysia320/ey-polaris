@@ -29,6 +29,8 @@ export function TransactionCalendar({
   const totalsByDate = useMemo(() => {
     const map = new Map<string, DayTotals>()
     for (const t of transactions) {
+      // 이체는 자산 이동일 뿐 — 일별 수입/지출 합계에서 제외
+      if (t.kind === 'transfer') continue
       const totals = map.get(t.date) ?? { income: 0, expense: 0 }
       if (t.kind === 'income') totals.income += t.amount
       else totals.expense += t.amount

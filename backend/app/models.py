@@ -33,7 +33,9 @@ class Account(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     member_id: Mapped[int] = mapped_column(ForeignKey("members.id", ondelete="RESTRICT"))
 
-    transactions: Mapped[list["Transaction"]] = relationship(back_populates="account")
+    transactions: Mapped[list["Transaction"]] = relationship(
+        back_populates="account", foreign_keys="Transaction.account_id"
+    )
     member: Mapped["Member"] = relationship()
 
 
@@ -52,7 +54,7 @@ class Category(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     major: Mapped[str] = mapped_column(String(100))  # 대분류
     minor: Mapped[str] = mapped_column(String(100), default="미분류")  # 소분류
-    kind: Mapped[str] = mapped_column(String(10))  # income | expense
+    kind: Mapped[str] = mapped_column(String(10))  # income | expense | transfer
     nature: Mapped[str] = mapped_column(String(10), default="variable")  # fixed | variable
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="category")
@@ -64,16 +66,24 @@ class Category(Base):
 
 
 class Transaction(Base):
-    """수입/지출 거래. 금액은 KRW 정수(원 단위), 항상 양수이며 kind로 방향을 구분."""
+    """수입/지출/이체 거래. 금액은 KRW 정수(원 단위), 항상 양수이며 kind로 방향을 구분.
+
+    이체(transfer)는 account_id가 출금 계정, counter_account_id가 입금 계정이며
+    수입/지출 통계에는 포함되지 않고 두 계정 잔액에만 ±반영된다.
+    """
 
     __tablename__ = "transactions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     date: Mapped[date_type] = mapped_column(Date, index=True)
     amount: Mapped[int] = mapped_column(BigInteger)
-    kind: Mapped[str] = mapped_column(String(10))  # income | expense
+    kind: Mapped[str] = mapped_column(String(10))  # income | expense | transfer
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"))
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="RESTRICT"))
+    # 이체 전용 — 입금 계정. 수입/지출 거래에서는 항상 NULL
+    counter_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=True
+    )
     member_id: Mapped[int | None] = mapped_column(
         ForeignKey("members.id", ondelete="SET NULL"), nullable=True
     )
@@ -81,7 +91,10 @@ class Transaction(Base):
     source: Mapped[str] = mapped_column(String(10), default="manual")  # manual | import
 
     category: Mapped["Category"] = relationship(back_populates="transactions")
-    account: Mapped["Account"] = relationship(back_populates="transactions")
+    account: Mapped["Account"] = relationship(
+        back_populates="transactions", foreign_keys=[account_id]
+    )
+    counter_account: Mapped["Account | None"] = relationship(foreign_keys=[counter_account_id])
     member: Mapped["Member | None"] = relationship()
 
 
