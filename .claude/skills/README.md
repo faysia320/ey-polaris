@@ -38,6 +38,8 @@
 | Action Item 단위 점진 구현 + TodoWrite | 큰 작업을 한 번에 구현하면 일관성 상실 | 작은 과제부터 분해 없이 실행해 품질 비교 (신형 모델은 분해 불필요해지는 경향) |
 | `!`git ...`` 동적 컨텍스트 주입 | 모델이 상태 확인 명령을 가끔 빠뜨림 | 주입 제거 후 상태 확인을 스스로 수행하는지 관찰 |
 | 모바일 AC 강제 (research: UI 작업이면 모바일 AC 필수, qa: 루브릭에 375px 점검) | CLAUDE.md의 일반 지시("모바일 신경 쓰기")만으로는 횡단 품질 요구가 일관되게 계약·채점에 반영되지 않음 | 스킬 규칙을 제거하고 CLAUDE.md 지시만 남긴 뒤 UI 작업 N회에서 모바일 AC 포함률·qa 검출률 비교 |
+| 브라우저 E2E를 `/qa` 단독 배치 (implement는 빌드/테스트까지, qa-evaluator allowlist에 Chrome MCP 포함) | 구현자의 자가 E2E에는 자기 관용이 섞이고, 두 단계 중복 E2E는 파이프라인 소요 시간을 약 2배로 만듦. ※ 과거에 qa-evaluator allowlist에서 MCP 도구가 누락되어 E2E가 /implement로 역류한 전례 있음(2026-06-12 보고서들) — allowlist 변경 시 브라우저 도구 포함 여부를 반드시 확인 | implement의 브라우저 검증 금지를 해제하고 같은 작업에서 총 소요 시간·결함 검출률 비교 |
+| qa의 계층 재검증 (핵심 AC는 직접 실행, 부수 주장은 저비용 교차 확인으로 채택 가능) + 탐색 1-hop·빌드 1회 상한 | 전수 재실행은 판정 신뢰도 향상 대비 비용(시간)이 과함. 상한 없는 안티-관용 규칙은 평가자가 멈출 근거를 주지 않음 | 전수 재실행으로 되돌려 동일 결함 세트에서 판정 차이·소요 시간 비교 |
 | `disable-model-invocation` (implement/git-commit) | — (모델 능력 가정이 아니라 **권한 정책**: 부작용 있는 단계는 사용자가 타이밍을 통제) | 제거 대상 아님 |
 
 ## 에이전트 정의 (.claude/agents/)
@@ -46,7 +48,7 @@
 
 | 에이전트 | 용도 | 도구 |
 | --- | --- | --- |
-| `qa-evaluator` | `/qa`의 포크 실행자. Edit·NotebookEdit이 구조적으로 없는 독립 평가자 | Read, Grep, Glob, Bash, Write (allowlist) |
+| `qa-evaluator` | `/qa`의 포크 실행자. Edit·NotebookEdit이 구조적으로 없는 독립 평가자 | Read, Grep, Glob, Bash, Write, Agent(Explore 병렬 탐색 전용), ToolSearch, Chrome MCP 브라우저 도구(E2E 전용) — allowlist |
 
 새 에이전트는 "범용 에이전트로는 안 된다"는 가정이 실제로 확인될 때만 추가한다 (예: 구현 병렬화가 필요해지면 `frontend-dev`/`backend-dev`). 추가 시 위 하네스 가정 테이블에도 행을 추가할 것.
 
