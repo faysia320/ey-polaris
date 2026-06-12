@@ -43,5 +43,7 @@ export function EChart({ option, height = 300, className, onClick }: EChartProps
     chartRef.current?.setOption({ backgroundColor: 'transparent', ...option }, true)
   }, [option])
 
-  return <div ref={containerRef} className={className} style={{ height }} />
+  // contain: inline-size — echarts가 canvas에 박는 인라인 px 폭이 조상 flex/grid의
+  // min-content로 전파되는 것을 차단한다 (전파되면 뷰포트 축소 시 가로 스크롤 데드락)
+  return <div ref={containerRef} className={className} style={{ height, contain: 'inline-size' }} />
 }

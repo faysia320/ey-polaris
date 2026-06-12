@@ -69,7 +69,9 @@ export function AppLayout() {
         ))}
       </nav>
 
-      <main className="flex-1 p-4 pb-20 md:ml-60 md:p-8">
+      {/* min-w-0: flex item의 자동 최소 폭(min-width:auto) 해제 — 없으면 ECharts canvas의
+          인라인 px 폭이 min-content로 전파되어 뷰포트 축소 시 가로 스크롤 데드락이 생긴다 */}
+      <main className="min-w-0 flex-1 p-4 pb-20 md:ml-60 md:p-8">
         <Outlet />
       </main>
     </div>
