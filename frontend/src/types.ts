@@ -68,14 +68,14 @@ export interface TransactionInput {
 export interface Budget {
   id: number
   year_month: string
-  category_id: number
+  /** 지출 대분류 이름 — 예산은 대분류 단위로만 설정한다 */
+  major: string
   amount: number
-  category_name: string
 }
 
 export interface BudgetProgress {
-  category_id: number
-  category_name: string
+  /** 지출 대분류 이름 */
+  major: string
   amount: number
   spent: number
 }

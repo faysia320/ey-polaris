@@ -77,11 +77,11 @@ export function DashboardPage() {
       .catch((e: Error) => setError(e.message))
   }, [month, memberId, fetchDashboard])
 
-  // 트리맵·스택바·범례가 같은 카테고리명에 같은 색을 쓰도록 이름 기준으로 배색
+  // 트리맵·스택바·범례가 같은 대분류명에 같은 색을 쓰도록 이름 기준으로 배색
   const colorByName = useMemo(() => {
     const names = (dashboard?.expense_by_category ?? []).map((d) => d.category_name)
     for (const b of dashboard?.budgets ?? []) {
-      if (!names.includes(b.category_name)) names.push(b.category_name)
+      if (!names.includes(b.major)) names.push(b.major)
     }
     return new Map(names.map((n, i) => [n, CHART_PALETTE[i % CHART_PALETTE.length]]))
   }, [dashboard])
@@ -217,12 +217,12 @@ export function DashboardPage() {
             <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-muted">
               {budgets.map((b) => (
                 <div
-                  key={b.category_id}
-                  title={`${b.category_name} ${formatKRW(b.spent)}`}
+                  key={b.major}
+                  title={`${b.major} ${formatKRW(b.spent)}`}
                   className="h-full"
                   style={{
                     width: stackDenom > 0 ? `${(b.spent / stackDenom) * 100}%` : '0%',
-                    backgroundColor: colorByName.get(b.category_name) ?? CHART_PALETTE[0],
+                    backgroundColor: colorByName.get(b.major) ?? CHART_PALETTE[0],
                   }}
                 />
               ))}
@@ -234,17 +234,17 @@ export function DashboardPage() {
               <ul className="mt-2 space-y-1">
                 {budgets.map((b) => (
                   <li
-                    key={b.category_id}
+                    key={b.major}
                     className="flex items-center justify-between gap-2 text-xs"
                   >
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span
                         className="size-2 shrink-0 rounded-full"
                         style={{
-                          backgroundColor: colorByName.get(b.category_name) ?? CHART_PALETTE[0],
+                          backgroundColor: colorByName.get(b.major) ?? CHART_PALETTE[0],
                         }}
                       />
-                      <span className="truncate">{b.category_name}</span>
+                      <span className="truncate">{b.major}</span>
                     </span>
                     <span
                       className={`shrink-0 tabular-nums ${

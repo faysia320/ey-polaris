@@ -130,16 +130,18 @@ class Goal(Base):
 
 
 class Budget(Base):
-    """월별 카테고리 예산. (연월, 카테고리) 유니크."""
+    """월별 지출 대분류 예산. (연월, 대분류) 유니크.
+
+    카테고리 행이 아니라 대분류 이름(major)으로 키잉한다 — 소분류 단위 예산은 두지 않는다.
+    대분류 이름 변경 시 기존 예산 문자열은 따라가지 않는다 (알려진 한계 — 옛 이름 예산은 삭제 가능).
+    """
 
     __tablename__ = "budgets"
     __table_args__ = (
-        UniqueConstraint("year_month", "category_id", name="uq_budgets_month_category"),
+        UniqueConstraint("year_month", "major", name="uq_budgets_month_major"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     year_month: Mapped[str] = mapped_column(String(7), index=True)  # YYYY-MM
-    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"))
+    major: Mapped[str] = mapped_column(String(100))  # 지출 대분류 이름
     amount: Mapped[int] = mapped_column(BigInteger)
-
-    category: Mapped["Category"] = relationship()

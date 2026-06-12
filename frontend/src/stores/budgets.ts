@@ -8,8 +8,8 @@ interface BudgetState {
   month: string
   items: Budget[]
   fetch: (month?: string) => Promise<void>
-  /** 해당 월·카테고리 예산을 생성 또는 수정한다. */
-  save: (categoryId: number, amount: number) => Promise<void>
+  /** 해당 월·지출 대분류 예산을 생성 또는 수정한다. */
+  save: (major: string, amount: number) => Promise<void>
   remove: (id: number) => Promise<void>
 }
 
@@ -23,13 +23,13 @@ export const useBudgetStore = create<BudgetState>((set, get) => ({
     set({ month: target, items })
   },
 
-  save: async (categoryId, amount) => {
+  save: async (major, amount) => {
     const { month, items } = get()
-    const existing = items.find((b) => b.category_id === categoryId)
+    const existing = items.find((b) => b.major === major)
     if (existing) {
       await api.put(`/budgets/${existing.id}`, { amount })
     } else {
-      await api.post('/budgets', { year_month: month, category_id: categoryId, amount })
+      await api.post('/budgets', { year_month: month, major, amount })
     }
     await get().fetch()
   },

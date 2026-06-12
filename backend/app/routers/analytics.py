@@ -2,7 +2,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case, func, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.database import get_db
@@ -59,30 +59,19 @@ def dashboard(
         .group_by(models.Category.major)
         .order_by(func.sum(models.Transaction.amount).desc())
     ).all()
-    # 예산 진행률용 — 예산은 카테고리(소분류) 행 단위
-    spent_by_category = dict(
-        db.execute(
-            select(
-                models.Transaction.category_id,
-                func.sum(models.Transaction.amount),
-            )
-            .where(in_month, models.Transaction.kind == "expense")
-            .group_by(models.Transaction.category_id)
-        ).all()
-    )
+    # 예산 진행률용 — 예산은 지출 대분류 단위, spent는 대분류 아래 모든 소분류 합산
+    spent_by_major = {row.major: int(row.amount) for row in expense_rows}
 
     budget_rows = db.scalars(
         select(models.Budget)
-        .options(selectinload(models.Budget.category))
         .where(models.Budget.year_month == month)
         .order_by(models.Budget.id)
     ).all()
     budgets = [
         schemas.BudgetProgress(
-            category_id=b.category_id,
-            category_name=b.category.display_name,
+            major=b.major,
             amount=b.amount,
-            spent=spent_by_category.get(b.category_id, 0),
+            spent=spent_by_major.get(b.major, 0),
         )
         for b in budget_rows
     ]

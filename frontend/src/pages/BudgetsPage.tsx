@@ -12,14 +12,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { addMonths, categoryLabel, formatKRW } from '@/lib/format'
+import { addMonths, formatKRW } from '@/lib/format'
 import { useBudgetStore } from '@/stores/budgets'
 import { useMasterDataStore } from '@/stores/masterData'
 
 export function BudgetsPage() {
   const { month, items, fetch, save, remove } = useBudgetStore()
   const { categories, loaded, fetchAll } = useMasterDataStore()
-  const [drafts, setDrafts] = useState<Record<number, string>>({})
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -27,12 +27,15 @@ export function BudgetsPage() {
     if (!loaded) fetchAll().catch((e: Error) => setError(e.message))
   }, [fetch, fetchAll, loaded])
 
-  const expenseCategories = useMemo(
-    () => categories.filter((c) => c.kind === 'expense'),
-    [categories],
-  )
-  const budgetByCategory = useMemo(
-    () => new Map(items.map((b) => [b.category_id, b])),
+  // 예산은 지출 대분류 단위 — 소분류 행을 펼치지 않고 고유 대분류만 나열.
+  // 대분류 이름이 바뀌어 카테고리에 없는 옛 이름 예산도 행에 남겨 수정·삭제할 수 있게 한다
+  const expenseMajors = useMemo(() => {
+    const majors = new Set(categories.filter((c) => c.kind === 'expense').map((c) => c.major))
+    for (const b of items) majors.add(b.major)
+    return [...majors]
+  }, [categories, items])
+  const budgetByMajor = useMemo(
+    () => new Map(items.map((b) => [b.major, b])),
     [items],
   )
   const total = items.reduce((sum, b) => sum + b.amount, 0)
@@ -42,8 +45,8 @@ export function BudgetsPage() {
     fetch(addMonths(month, delta)).catch((e: Error) => setError(e.message))
   }
 
-  const saveRow = async (categoryId: number) => {
-    const raw = drafts[categoryId]
+  const saveRow = async (major: string) => {
+    const raw = drafts[major]
     if (raw === undefined || raw === '') return
     const amount = Number(raw)
     if (!Number.isInteger(amount) || amount <= 0) {
@@ -52,10 +55,10 @@ export function BudgetsPage() {
     }
     setError(null)
     try {
-      await save(categoryId, amount)
+      await save(major, amount)
       setDrafts((d) => {
         const next = { ...d }
-        delete next[categoryId]
+        delete next[major]
         return next
       })
     } catch (e) {
@@ -100,31 +103,26 @@ export function BudgetsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {expenseCategories.length === 0 && (
+            {expenseMajors.length === 0 && (
               <TableRow>
                 <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
                   지출 카테고리가 없습니다. 기준정보 관리에서 먼저 추가해주세요.
                 </TableCell>
               </TableRow>
             )}
-            {expenseCategories.map((c) => {
-              const budget = budgetByCategory.get(c.id)
+            {expenseMajors.map((major) => {
+              const budget = budgetByMajor.get(major)
               return (
-                <TableRow key={c.id}>
-                  <TableCell>
-                    {categoryLabel(c)}
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      {c.nature === 'fixed' ? '🛸 정기 궤도' : '☄️ 유성우'}
-                    </span>
-                  </TableCell>
+                <TableRow key={major}>
+                  <TableCell>{major}</TableCell>
                   <TableCell>{budget ? formatKRW(budget.amount) : '—'}</TableCell>
                   <TableCell>
                     <Input
                       type="number"
                       min={1}
                       placeholder={budget ? String(budget.amount) : '예산 입력'}
-                      value={drafts[c.id] ?? ''}
-                      onChange={(e) => setDrafts({ ...drafts, [c.id]: e.target.value })}
+                      value={drafts[major] ?? ''}
+                      onChange={(e) => setDrafts({ ...drafts, [major]: e.target.value })}
                     />
                   </TableCell>
                   <TableCell>
@@ -132,8 +130,8 @@ export function BudgetsPage() {
                       <Button
                         size="sm"
                         variant="secondary"
-                        disabled={!drafts[c.id]}
-                        onClick={() => saveRow(c.id)}
+                        disabled={!drafts[major]}
+                        onClick={() => saveRow(major)}
                       >
                         저장
                       </Button>

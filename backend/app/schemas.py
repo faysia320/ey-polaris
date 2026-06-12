@@ -130,7 +130,7 @@ class GoalOut(GoalCreate):
 # ---------- Budget ----------
 class BudgetCreate(BaseModel):
     year_month: str = Field(pattern=YEAR_MONTH_PATTERN)
-    category_id: int
+    major: str = Field(min_length=1, max_length=100, description="지출 대분류 이름")
     amount: int = Field(gt=0)
 
 
@@ -141,7 +141,6 @@ class BudgetUpdate(BaseModel):
 class BudgetOut(BudgetCreate):
     model_config = ConfigDict(from_attributes=True)
     id: int
-    category_name: str
 
 
 # ---------- Analytics ----------
@@ -152,8 +151,7 @@ class CategoryAmount(BaseModel):
 
 
 class BudgetProgress(BaseModel):
-    category_id: int
-    category_name: str
+    major: str
     amount: int
     spent: int
 

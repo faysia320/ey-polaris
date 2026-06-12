@@ -41,4 +41,4 @@ def update_category(
 def delete_category(category_id: int, db: Session = Depends(get_db)):
     category = get_or_404(db, models.Category, category_id, "카테고리")
     db.delete(category)
-    commit_or_conflict(db, "거래 또는 예산에서 참조 중인 카테고리는 삭제할 수 없습니다")
+    commit_or_conflict(db, "거래에서 참조 중인 카테고리는 삭제할 수 없습니다")
