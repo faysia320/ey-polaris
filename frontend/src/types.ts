@@ -88,7 +88,6 @@ export interface Dashboard {
   budget_spent: number
   budgets: BudgetProgress[]
   expense_by_category: CategoryAmount[]
-  recent_transactions: Transaction[]
 }
 
 export interface AccountBalance {

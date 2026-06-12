@@ -6,6 +6,8 @@ interface EChartProps {
   option: EChartsOption
   height?: number
   className?: string
+  /** 시리즈 요소 클릭 핸들러 — 미지정 시 이벤트 바인딩 없음 */
+  onClick?: (params: echarts.ECElementEvent) => void
 }
 
 /**
@@ -13,14 +15,21 @@ interface EChartProps {
  * echarts-for-react 대신 useRef/useEffect로 라이프사이클을 직접 관리한다
  * (research.md 권장 — React 19 호환성과 유지보수 리스크 회피).
  */
-export function EChart({ option, height = 300, className }: EChartProps) {
+export function EChart({ option, height = 300, className, onClick }: EChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<echarts.ECharts | null>(null)
+  // 핸들러는 ref로 보관해 차트 인스턴스 재생성 없이 항상 최신 콜백을 호출한다
+  const onClickRef = useRef(onClick)
+
+  useEffect(() => {
+    onClickRef.current = onClick
+  }, [onClick])
 
   useEffect(() => {
     if (!containerRef.current) return
     const chart = echarts.init(containerRef.current, 'dark')
     chartRef.current = chart
+    chart.on('click', (params) => onClickRef.current?.(params))
     const observer = new ResizeObserver(() => chart.resize())
     observer.observe(containerRef.current)
     return () => {

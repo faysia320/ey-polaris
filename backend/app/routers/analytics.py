@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session, selectinload
 
 from app import models, schemas
 from app.database import get_db
-from app.routers.transactions import _to_out as transaction_to_out
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -84,20 +83,6 @@ def dashboard(
         for b in budget_rows
     ]
 
-    recent_stmt = (
-        select(models.Transaction)
-        .options(
-            selectinload(models.Transaction.category),
-            selectinload(models.Transaction.account),
-            selectinload(models.Transaction.member),
-        )
-        .order_by(models.Transaction.date.desc(), models.Transaction.id.desc())
-        .limit(5)
-    )
-    if member_id is not None:
-        recent_stmt = recent_stmt.where(models.Transaction.member_id == member_id)
-    recent = db.scalars(recent_stmt).all()
-
     return schemas.DashboardOut(
         month=month,
         income_total=month_total("income"),
@@ -109,7 +94,6 @@ def dashboard(
             schemas.CategoryAmount(category_name=row.major, amount=row.amount)
             for row in expense_rows
         ],
-        recent_transactions=[transaction_to_out(t) for t in recent],
     )
 
 

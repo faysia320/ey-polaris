@@ -161,7 +161,6 @@ class DashboardOut(BaseModel):
     budget_spent: int
     budgets: list[BudgetProgress]
     expense_by_category: list[CategoryAmount]
-    recent_transactions: list[TransactionOut]
 
 
 class AccountBalance(BaseModel):
