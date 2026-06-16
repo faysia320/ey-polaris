@@ -24,10 +24,6 @@ import { addMonths, formatKRW, formatNumber } from '@/lib/format'
 import { useBudgetStore } from '@/stores/budgets'
 import { useMasterDataStore } from '@/stores/masterData'
 
-// 변경 금액 입력란에서 브라우저 기본 숫자 스피너(증감 화살표)를 숨긴다
-const NO_SPINNER =
-  '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
-
 // 빠른 입력 버튼 — 클릭 시 현재 입력값에 누적 가산
 const QUICK_AMOUNTS = [
   { label: '+100만원', value: 1_000_000 },
@@ -187,12 +183,14 @@ export function BudgetsPage() {
                   <TableCell>
                     <div className="flex flex-col gap-1">
                       <Input
-                        type="number"
-                        min={1}
-                        className={NO_SPINNER}
+                        type="text"
+                        inputMode="numeric"
                         placeholder={budget ? formatNumber(budget.amount) : '예산 입력'}
-                        value={drafts[major] ?? ''}
-                        onChange={(e) => setDrafts({ ...drafts, [major]: e.target.value })}
+                        // 내부 draft는 순수 숫자 문자열로 유지하고 표시값에만 콤마를 적용
+                        value={drafts[major] ? formatNumber(Number(drafts[major])) : ''}
+                        onChange={(e) =>
+                          setDrafts({ ...drafts, [major]: e.target.value.replace(/[^\d]/g, '') })
+                        }
                       />
                       <div className="flex flex-wrap gap-1">
                         {QUICK_AMOUNTS.map((q) => (
