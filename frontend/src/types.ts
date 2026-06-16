@@ -99,12 +99,6 @@ export interface Dashboard {
   expense_by_category: CategoryAmount[]
 }
 
-/** 카드/은행 계정의 지출 출처 분해 — '직접 사용' 또는 간편결제 채널명 */
-export interface UsageSource {
-  name: string
-  amount: number
-}
-
 export interface AccountBalance {
   id: number
   name: string
@@ -113,8 +107,6 @@ export interface AccountBalance {
   balance: number
   /** 잔액이 평가액 기반이면 해당 평가 기준일(YYYY-MM-DD), 아니면 null */
   valued_at: string | null
-  /** 연결된 간편결제 계정이 있는 카드/은행만 채워진다 — 직접/간편결제 채널별 지출 분해 */
-  usage_breakdown: UsageSource[]
 }
 
 export interface Valuation {

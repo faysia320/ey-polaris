@@ -37,8 +37,8 @@ const ACCOUNT_TYPE_LABEL: Record<AccountType, string> = {
   other: "기타",
 };
 
-// 간편결제 계정은 패스스루로 잔액이 연결 카드/은행에 귀속되므로 자체 그룹으로 노출하지 않는다.
-// 대신 연결 계정 카드 안에서 '직접/간편결제 사용' 분해로 보여준다.
+// 간편결제 계정은 패스스루로 잔액이 연결 카드/은행에 귀속(잔액 0으로 수렴)되므로
+// 자체 그룹으로 노출하지 않는다.
 const HIDDEN_GROUP_TYPES: AccountType[] = ["easy_pay"];
 
 /** 평가액 스냅샷으로 잔액을 관리하는 시세형 계정 유형 */
@@ -354,28 +354,6 @@ export function AssetsPage() {
                         <p className="mt-1 text-xs text-muted-foreground">
                           평가 기준일 {a.valued_at}
                         </p>
-                      )}
-                      {a.usage_breakdown.length > 0 && (
-                        <div className="mt-3 space-y-1 border-t pt-2">
-                          <p className="text-xs font-medium text-muted-foreground">
-                            잔액 구성
-                          </p>
-                          {a.usage_breakdown.map((u) => (
-                            <div
-                              key={u.name}
-                              className="flex items-center justify-between gap-2 text-xs"
-                            >
-                              <span className="truncate text-muted-foreground">
-                                {u.name}
-                              </span>
-                              <span
-                                className={`shrink-0 ${u.amount < 0 ? "text-rose-400" : ""}`}
-                              >
-                                {formatKRW(u.amount)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
                       )}
                       {VALUATION_TYPES.includes(a.type) && (
                         <Button

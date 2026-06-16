@@ -192,12 +192,6 @@ class DashboardOut(BaseModel):
     expense_by_category: list[CategoryAmount]
 
 
-class UsageSource(BaseModel):
-    # 카드/은행 계정의 지출 출처 분해 — '직접 사용' 또는 간편결제 채널명
-    name: str
-    amount: int
-
-
 class AccountBalance(BaseModel):
     id: int
     name: str
@@ -206,9 +200,6 @@ class AccountBalance(BaseModel):
     balance: int
     # 잔액이 평가액 기반이면 해당 평가 기준일, 아니면 None
     valued_at: date_type | None = None
-    # 연결된 간편결제 계정이 있는 카드/은행만 채워진다 — 직접 사용분 + 채널별 간편결제 사용분.
-    # 비어 있으면 분해 표시 없음 (일반 계정).
-    usage_breakdown: list[UsageSource] = Field(default_factory=list)
 
 
 class MonthlyPoint(BaseModel):
