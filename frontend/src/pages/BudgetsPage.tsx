@@ -96,10 +96,10 @@ export function BudgetsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>지출 카테고리</TableHead>
-              <TableHead>현재 예산</TableHead>
-              <TableHead className="w-64">변경 금액 (원)</TableHead>
-              <TableHead className="w-32"></TableHead>
+              <TableHead>지출 대분류</TableHead>
+              <TableHead className="hidden sm:table-cell">현재 예산</TableHead>
+              <TableHead className="w-28 sm:w-64">변경 금액 (원)</TableHead>
+              <TableHead></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -114,8 +114,16 @@ export function BudgetsPage() {
               const budget = budgetByMajor.get(major)
               return (
                 <TableRow key={major}>
-                  <TableCell>{major}</TableCell>
-                  <TableCell>{budget ? formatKRW(budget.amount) : '—'}</TableCell>
+                  <TableCell>
+                    {major}
+                    {/* 모바일에서는 '현재 예산' 컬럼을 숨기고 보조 줄로 표시 */}
+                    <span className="block text-xs text-muted-foreground sm:hidden">
+                      {budget ? formatKRW(budget.amount) : '—'}
+                    </span>
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell">
+                    {budget ? formatKRW(budget.amount) : '—'}
+                  </TableCell>
                   <TableCell>
                     <Input
                       type="number"

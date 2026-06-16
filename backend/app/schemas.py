@@ -133,6 +133,15 @@ class BudgetCreate(BaseModel):
     major: str = Field(min_length=1, max_length=100, description="지출 대분류 이름")
     amount: int = Field(gt=0)
 
+    @field_validator("major")
+    @classmethod
+    def strip_major(cls, v: str) -> str:
+        # API 직접 호출 시 공백 패딩(" 교통 ")이 별도 대분류로 저장되는 것을 방지
+        v = v.strip()
+        if not v:
+            raise ValueError("대분류 이름이 비어 있습니다")
+        return v
+
 
 class BudgetUpdate(BaseModel):
     amount: int = Field(gt=0)

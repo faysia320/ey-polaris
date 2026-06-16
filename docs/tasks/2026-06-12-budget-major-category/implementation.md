@@ -1,7 +1,15 @@
-# Implementation: 예산을 지출 대분류 단위로만 설정·집계
+# Implementation: 예산을 지출 대분류 단위로만 설정·집계 (2차 — QA FAIL 수정 반영)
 
 - 날짜: 2026-06-12
 - 기반 명세: docs/tasks/2026-06-12-budget-major-category/research.md
+
+## 2차 수정 (QA 2차 FAIL의 Action Items 반영)
+
+- **AC-4 계약 정합 [High]**: research.md AC-4를 사용자 결정(2026-06-12 /implement 입력: "개발 테스트 단계라 소분류 지정 예산은 삭제해도 됨")에 맞게 개정 — "소분류 지정 예산 삭제 + '미분류' 예산만 백필"로 갱신, 개정 사유·출처 병기. **코드 무변경** (QA 권고 옵션 a).
+- `frontend/src/pages/BudgetsPage.tsx` [Low]: 헤더 라벨 "지출 카테고리" → "지출 대분류". 모바일 퍼스트 개선 — '현재 예산' 컬럼을 `hidden sm:table-cell`로 데스크톱 전용화하고 모바일에서는 대분류 셀 보조 줄로 표시, 입력 컬럼 `w-64` → `w-28 sm:w-64`, 액션 컬럼 고정폭 `w-32` 제거 (375px에서 내부 가로 스크롤 의존 제거).
+- `backend/app/schemas.py` [Low]: `BudgetCreate.major`에 strip 검증 추가 — `" 교통 "` → `"교통"` 정규화 저장(201 확인), 공백만 입력 → 422 한국어 메시지 (API 재검증 후 테스트 데이터 삭제).
+- 별개 작업(assets-page-horizontal-scroll) 변경 3개 파일 혼재 [Medium]: 이 작업 범위 밖 — /git-commit 단계에서 커밋 스코프 분리 필요 (메모만 남김).
+- AC-5~7 브라우저 실측 [Medium]: implement 단계 규칙상 브라우저 E2E는 /qa 전담 — qa-evaluator가 브라우저 도구(Chrome MCP)가 있는 환경에서 실측 필요. frontend는 http://localhost:3000 에 변경 반영 재빌드 완료.
 
 ## 변경 파일
 - `backend/alembic/versions/0007_budget_major_only.py` — 신규 마이그레이션: budgets.major 추가, 소분류 지정 예산 삭제, '미분류' 예산 대분류 백필, category_id/FK/기존 유니크 제거, (year_month, major) 유니크 추가. downgrade 포함
@@ -39,11 +47,12 @@
 - [x] AC-1: 대분류 단위 입력, 비지출/미존재 대분류 422 — API 호출로 확인 (위 검증 결과)
 - [x] AC-2: (연월, 대분류) 중복 409 — API 호출로 확인
 - [x] AC-3: spent가 대분류 아래 모든 소분류 합산, member 필터 유지 — API 호출 + DB 합계 대조로 확인
-- [x] AC-4 (변경): 사용자 결정에 따라 합산 병합 대신 **소분류 지정 예산 삭제**로 대체 — '미분류' 예산 2건은 유실 없이 백필됨 (DB 조회로 확인). 원래 AC의 "월별 총액 동일"은 의도적으로 미적용
+- [x] AC-4 (개정판 기준): 소분류 지정 예산 삭제 + '미분류' 예산 백필 — DB 조회로 확인, research.md AC-4를 결정 출처와 함께 개정해 계약·구현 일치
 - [ ] AC-5: 예산 페이지 대분류 목록·CRUD — 코드 구현 완료, npm build 통과. 브라우저 실확인은 /qa에 위임
 - [ ] AC-6: 대시보드 위젯 대분류 표시·색상 매핑 — 코드 구현 완료. 브라우저 실확인은 /qa에 위임
-- [ ] AC-7: 375px 모바일 — 레이아웃 구조 변경 없음(행 수만 감소). 브라우저 실확인은 /qa에 위임
-- [x] AC-8: `npm run build` 통과
+- [ ] AC-7: 375px 모바일 — 2차에서 모바일 전용 레이아웃 적용(현재 예산 컬럼 통합·고정폭 축소). 브라우저 실확인은 /qa에 위임
+- [x] AC-8: `npm run build` 통과 (2차 수정 후 재실행 — tsc+vite 통과, lint 에러 0/경고 2는 별개 작업 파일)
 
 ## 보류/미완 항목
-- AC-5~7의 브라우저 실측 검증 — /qa 단계에서 수행 (스택은 http://localhost:3000 에 기동된 상태)
+- AC-5~7의 브라우저 실측 검증 — /qa 단계에서 수행 (스택은 http://localhost:3000 에 2차 변경 반영 재빌드 완료). 직전 /qa 환경에 브라우저 도구가 없었으므로, 브라우저 도구(Chrome MCP) 가용 환경에서 /qa 실행 필요
+- 커밋 시 별개 작업(2026-06-12-assets-page-horizontal-scroll)의 변경 파일(EChart.tsx/AppLayout.tsx/TransactionsPage.tsx)과 스코프 분리 필요
