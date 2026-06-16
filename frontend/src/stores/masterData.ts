@@ -14,6 +14,8 @@ export interface AccountInput {
   opening_balance: number
   is_active: boolean
   member_id: number
+  /** 간편결제(easy_pay) 전용 — 연결 카드/은행 계정 id. 그 외 유형은 null */
+  linked_account_id: number | null
 }
 
 export interface CategoryInput {

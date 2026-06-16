@@ -36,11 +36,15 @@ const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
   { value: 'bank', label: '은행' },
   { value: 'cash', label: '현금' },
   { value: 'card', label: '카드' },
+  { value: 'easy_pay', label: '간편결제' },
   { value: 'investment', label: '투자' },
   { value: 'stock', label: '주식' },
   { value: 'real_estate', label: '부동산' },
   { value: 'other', label: '기타' },
 ]
+
+/** 간편결제 계정이 연결할 수 있는 실물 자산 유형 — 백엔드 LINKABLE_TYPES와 일치 */
+const LINKABLE_TYPES: AccountType[] = ['card', 'bank']
 
 // ---------- 카테고리 탭 ----------
 function CategoriesTab() {
@@ -270,7 +274,13 @@ function AccountsTab() {
   const [openingBalance, setOpeningBalance] = useState('0')
   const [isActive, setIsActive] = useState(true)
   const [memberId, setMemberId] = useState('')
+  const [linkedAccountId, setLinkedAccountId] = useState('')
   const [error, setError] = useState<string | null>(null)
+
+  // 간편결제 연결 후보 — 카드/은행 계정만, 편집 중인 계정 자신은 제외
+  const linkableAccounts = accounts.filter(
+    (a) => LINKABLE_TYPES.includes(a.type) && a.id !== editing?.id,
+  )
 
   const openCreate = () => {
     setEditing(null)
@@ -279,6 +289,7 @@ function AccountsTab() {
     setOpeningBalance('0')
     setIsActive(true)
     setMemberId('')
+    setLinkedAccountId('')
     setError(null)
     setOpen(true)
   }
@@ -290,6 +301,7 @@ function AccountsTab() {
     setOpeningBalance(String(a.opening_balance))
     setIsActive(a.is_active)
     setMemberId(String(a.member_id))
+    setLinkedAccountId(a.linked_account_id ? String(a.linked_account_id) : '')
     setError(null)
     setOpen(true)
   }
@@ -299,12 +311,15 @@ function AccountsTab() {
     const balance = Number(openingBalance)
     if (!Number.isInteger(balance)) return setError('개설 잔액은 정수여야 합니다')
     if (!memberId) return setError('소유자를 선택해주세요')
+    if (type === 'easy_pay' && !linkedAccountId) return setError('연결 계정을 선택해주세요')
     const input = {
       name: name.trim(),
       type,
       opening_balance: balance,
       is_active: isActive,
       member_id: Number(memberId),
+      // 간편결제일 때만 연결 계정을 보낸다 — 그 외 유형은 백엔드에서 null이어야 함
+      linked_account_id: type === 'easy_pay' ? Number(linkedAccountId) : null,
     }
     try {
       if (editing) {
@@ -341,7 +356,15 @@ function AccountsTab() {
             {accounts.map((a) => (
               <TableRow key={a.id}>
                 <TableCell>{a.name}</TableCell>
-                <TableCell>{ACCOUNT_TYPES.find((t) => t.value === a.type)?.label}</TableCell>
+                <TableCell>
+                  {ACCOUNT_TYPES.find((t) => t.value === a.type)?.label}
+                  {a.type === 'easy_pay' && a.linked_account_id && (
+                    <span className="text-xs text-muted-foreground">
+                      {' '}
+                      → {accounts.find((x) => x.id === a.linked_account_id)?.name ?? '—'}
+                    </span>
+                  )}
+                </TableCell>
                 <TableCell>{members.find((m) => m.id === a.member_id)?.name ?? '—'}</TableCell>
                 <TableCell>{formatKRW(a.opening_balance)}</TableCell>
                 <TableCell>
@@ -383,6 +406,28 @@ function AccountsTab() {
                 </SelectContent>
               </Select>
             </div>
+            {type === 'easy_pay' && (
+              <div className="space-y-1">
+                <Label>연결 계정 (카드/은행)</Label>
+                <Select value={linkedAccountId || undefined} onValueChange={setLinkedAccountId}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="실제 결제되는 계정 선택" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {linkableAccounts.map((a) => (
+                      <SelectItem key={a.id} value={String(a.id)}>
+                        {a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {linkableAccounts.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    연결할 카드/은행 계정이 없어요. 먼저 카드 또는 은행 계정을 추가해주세요.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="space-y-1">
               <Label>소유자</Label>
               <Select value={memberId || undefined} onValueChange={setMemberId}>

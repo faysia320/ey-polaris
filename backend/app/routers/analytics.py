@@ -99,20 +99,52 @@ def assets(
     # 구성원 필터 — 카드/총자산/추이는 소유 계정만으로 계산하되,
     # 목표 달성률용 전체 총자산(grand_total)은 항상 전 계정 기준으로 계산한다
     visible = accounts if member_id is None else [a for a in accounts if a.member_id == member_id]
-    net_by_account = dict(
-        db.execute(
+
+    # 간편결제(easy_pay) 패스스루 — easy_pay 계정의 거래 net은 실제 결제가 빠지는
+    # 연결 계정(linked_account_id)으로 귀속시킨다. easy_pay 계정 자체에는 net이 남지
+    # 않으므로 잔액은 opening_balance로 수렴한다. (집계용 라우팅이며 거래 데이터는 불변)
+    link_target = {
+        a.id: a.linked_account_id
+        for a in accounts
+        if a.type == "easy_pay" and a.linked_account_id is not None
+    }
+
+    def _route(account_id: int | None) -> int | None:
+        return link_target.get(account_id, account_id)
+
+    # 라우팅 전 원본 계정별 부호합(net) — easy_pay 채널을 개별 식별하기 위해 보존한다.
+    signed_by_account = {
+        account_id: int(total)
+        for account_id, total in db.execute(
             select(models.Transaction.account_id, func.sum(_signed_amount())).group_by(
                 models.Transaction.account_id
             )
         ).all()
-    )
-    # 이체 입금 다리(+) — _signed_amount()는 출금 계정의 -만 반영하므로 따로 가산
+    }
+    # 이체 입금 다리(+) — _signed_amount()는 출금 계정의 -만 반영하므로 따로 가산.
+    # easy_pay는 결제수단이라 입금 다리 대상이 아니지만, 라우팅을 일관 적용한다.
+    bridge_by_account: dict[int, int] = {}
     for account_id, total in db.execute(
         select(models.Transaction.counter_account_id, func.sum(models.Transaction.amount))
         .where(models.Transaction.kind == "transfer")
         .group_by(models.Transaction.counter_account_id)
     ).all():
-        net_by_account[account_id] = net_by_account.get(account_id, 0) + int(total)
+        bridge_by_account[account_id] = bridge_by_account.get(account_id, 0) + int(total)
+
+    # 라우팅된 계정별 net — easy_pay 계정의 net/입금 다리를 연결 계정으로 귀속
+    net_by_account: dict[int, int] = {}
+    for account_id, total in signed_by_account.items():
+        target = _route(account_id)
+        net_by_account[target] = net_by_account.get(target, 0) + total
+    for account_id, total in bridge_by_account.items():
+        target = _route(account_id)
+        net_by_account[target] = net_by_account.get(target, 0) + total
+
+    # 연결 계정 id → 그 계정을 연결한 easy_pay 계정 목록 (분해 채널)
+    easy_by_target: dict[int, list[models.Account]] = {}
+    for a in accounts:
+        if a.type == "easy_pay" and a.linked_account_id is not None:
+            easy_by_target.setdefault(a.linked_account_id, []).append(a)
 
     # 계정·월별 최신 평가액만 적재 (평가 이력이 길어도 계정당 월 1행).
     # 평가액이 1건 이상 있는 계정의 잔액은 최신 평가액 단독으로 계산한다
@@ -146,6 +178,27 @@ def assets(
             _, valued_at, balance = history[-1]
         else:
             balance, valued_at = a.opening_balance + int(net_by_account.get(a.id, 0)), None
+        # 연결된 간편결제 계정이 있는 카드/은행만 분해를 채운다.
+        # 분해는 '부호 있는 잔액 구성'이라 합이 정확히 balance와 일치한다(평가액 기반이 아닐 때):
+        #   balance = 개설 잔액 + 직접 사용(net) + Σ 간편결제 채널(net) + 입금·이체(net)
+        channels = easy_by_target.get(a.id, [])
+        breakdown: list[schemas.UsageSource] = []
+        # 평가액 기반 계정은 net과 무관하므로 분해를 만들지 않는다 (카드/은행은 통상 해당 없음)
+        if channels and not history:
+            if a.opening_balance != 0:
+                breakdown.append(
+                    schemas.UsageSource(name="개설 잔액", amount=a.opening_balance)
+                )
+            breakdown.append(
+                schemas.UsageSource(name="직접 사용", amount=signed_by_account.get(a.id, 0))
+            )
+            breakdown.extend(
+                schemas.UsageSource(name=e.name, amount=signed_by_account.get(e.id, 0))
+                for e in channels
+            )
+            bridge = bridge_by_account.get(a.id, 0)
+            if bridge != 0:
+                breakdown.append(schemas.UsageSource(name="입금·이체", amount=bridge))
         balances_by_id[a.id] = schemas.AccountBalance(
             id=a.id,
             name=a.name,
@@ -153,6 +206,7 @@ def assets(
             is_active=a.is_active,
             balance=balance,
             valued_at=valued_at,
+            usage_breakdown=breakdown,
         )
     grand_total = sum(b.balance for b in balances_by_id.values())
     balances = [balances_by_id[a.id] for a in visible]
@@ -161,14 +215,15 @@ def assets(
     #  - 해당 월 말 이전의 최신 평가액이 있으면 그 평가액
     #  - 없으면 개설 잔액 + 해당 월까지의 누적 순증감 (기존 방식)
     month_expr = func.to_char(models.Transaction.date, "YYYY-MM")
-    account_month_net: dict[tuple[int, str], int] = {
-        (account_id, m): int(total)
-        for account_id, m, total in db.execute(
-            select(models.Transaction.account_id, month_expr, func.sum(_signed_amount())).group_by(
-                models.Transaction.account_id, month_expr
-            )
-        ).all()
-    }
+    account_month_net: dict[tuple[int, str], int] = {}
+    # 현재 잔액 집계와 동일하게 easy_pay 거래를 연결 계정으로 라우팅
+    for account_id, m, total in db.execute(
+        select(models.Transaction.account_id, month_expr, func.sum(_signed_amount())).group_by(
+            models.Transaction.account_id, month_expr
+        )
+    ).all():
+        key = (_route(account_id), m)
+        account_month_net[key] = account_month_net.get(key, 0) + int(total)
     # 이체 입금 다리(+) — 현재 잔액 집계와 동일한 보정
     for account_id, m, total in db.execute(
         select(
@@ -177,7 +232,7 @@ def assets(
         .where(models.Transaction.kind == "transfer")
         .group_by(models.Transaction.counter_account_id, month_expr)
     ).all():
-        key = (account_id, m)
+        key = (_route(account_id), m)
         account_month_net[key] = account_month_net.get(key, 0) + int(total)
 
     today = date.today()

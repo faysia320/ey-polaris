@@ -1,7 +1,7 @@
 from datetime import date as date_type
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 YEAR_MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
 
@@ -22,7 +22,9 @@ class MemberOut(MemberCreate):
 
 
 # ---------- Account ----------
-AccountType = Literal["bank", "cash", "card", "investment", "stock", "real_estate", "other"]
+AccountType = Literal[
+    "bank", "cash", "card", "easy_pay", "investment", "stock", "real_estate", "other"
+]
 
 
 class AccountCreate(BaseModel):
@@ -31,6 +33,21 @@ class AccountCreate(BaseModel):
     opening_balance: int = 0
     is_active: bool = True
     member_id: int = Field(description="소유자 구성원 id — 모든 계정은 소유자 필수")
+    linked_account_id: int | None = Field(
+        default=None,
+        description="간편결제(easy_pay) 전용 — 실제 결제가 빠지는 카드/은행 계정 id",
+    )
+
+    @model_validator(mode="after")
+    def check_linked_account(self) -> "AccountCreate":
+        # easy_pay는 연결 계정 필수, 그 외 유형은 연결 계정을 가질 수 없다 (유형별 정합성).
+        # 연결 계정의 유형(card|bank)·존재·자기참조 검증은 DB가 필요하므로 라우터에서 수행한다.
+        if self.type == "easy_pay":
+            if self.linked_account_id is None:
+                raise ValueError("간편결제 계정은 연결 계정(linked_account_id)이 필요합니다")
+        elif self.linked_account_id is not None:
+            raise ValueError("간편결제 유형이 아닌 계정에는 연결 계정을 설정할 수 없습니다")
+        return self
 
 
 class AccountUpdate(AccountCreate):
@@ -175,6 +192,12 @@ class DashboardOut(BaseModel):
     expense_by_category: list[CategoryAmount]
 
 
+class UsageSource(BaseModel):
+    # 카드/은행 계정의 지출 출처 분해 — '직접 사용' 또는 간편결제 채널명
+    name: str
+    amount: int
+
+
 class AccountBalance(BaseModel):
     id: int
     name: str
@@ -183,6 +206,9 @@ class AccountBalance(BaseModel):
     balance: int
     # 잔액이 평가액 기반이면 해당 평가 기준일, 아니면 None
     valued_at: date_type | None = None
+    # 연결된 간편결제 계정이 있는 카드/은행만 채워진다 — 직접 사용분 + 채널별 간편결제 사용분.
+    # 비어 있으면 분해 표시 없음 (일반 계정).
+    usage_breakdown: list[UsageSource] = Field(default_factory=list)
 
 
 class MonthlyPoint(BaseModel):

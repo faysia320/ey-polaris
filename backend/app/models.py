@@ -28,15 +28,24 @@ class Account(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100), unique=True)
-    type: Mapped[str] = mapped_column(String(20))  # bank | cash | card | investment | other
+    # bank | cash | card | easy_pay | investment | stock | real_estate | other
+    type: Mapped[str] = mapped_column(String(20))
     opening_balance: Mapped[int] = mapped_column(BigInteger, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     member_id: Mapped[int] = mapped_column(ForeignKey("members.id", ondelete="RESTRICT"))
+    # 간편결제(easy_pay) 전용 — 실제 결제가 빠지는 카드/은행 계정. easy_pay가 아니면 항상 NULL.
+    # 집계 시 easy_pay 거래의 net·지출은 이 연결 계정으로 귀속된다(패스스루).
+    linked_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=True
+    )
 
     transactions: Mapped[list["Transaction"]] = relationship(
         back_populates="account", foreign_keys="Transaction.account_id"
     )
     member: Mapped["Member"] = relationship()
+    linked_account: Mapped["Account | None"] = relationship(
+        remote_side=[id], foreign_keys=[linked_account_id]
+    )
 
 
 class Category(Base):
