@@ -18,6 +18,11 @@ export function formatKRW(amount: number): string {
   return `${krw.format(amount)}원`
 }
 
+/** 천단위 콤마만 적용 (접미사 없음). 예: 1000000 → "1,000,000" */
+export function formatNumber(amount: number): string {
+  return krw.format(amount)
+}
+
 export function todayISO(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`

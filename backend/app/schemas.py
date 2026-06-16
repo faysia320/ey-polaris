@@ -164,6 +164,11 @@ class BudgetUpdate(BaseModel):
     amount: int = Field(gt=0)
 
 
+class BudgetCopy(BaseModel):
+    source_month: str = Field(pattern=YEAR_MONTH_PATTERN)
+    target_month: str = Field(pattern=YEAR_MONTH_PATTERN)
+
+
 class BudgetOut(BudgetCreate):
     model_config = ConfigDict(from_attributes=True)
     id: int
