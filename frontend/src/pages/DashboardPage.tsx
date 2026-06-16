@@ -3,6 +3,7 @@ import type { ECElementEvent, EChartsOption } from 'echarts'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { EChart } from '@/components/charts/EChart'
+import { MarkdownView } from '@/components/MarkdownView'
 import { MemberFilterSelect } from '@/components/members/MemberFilterSelect'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,6 +17,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/lib/api'
 import { addMonths, currentMonth, formatKRW, monthPace } from '@/lib/format'
+import { useAIReportStore } from '@/stores/aiReport'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { useMemberFilterStore } from '@/stores/memberFilter'
 import type { Transaction } from '@/types'
@@ -72,11 +74,28 @@ export function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [detail, setDetail] = useState<CategoryDetail | null>(null)
 
+  // AI 리포트 — 구성원 필터와 무관하게 월 단위로 조회/생성
+  const { byMonth, loading: reportLoading, fetch: fetchReport, generate: generateReport } =
+    useAIReportStore()
+  const report = byMonth[month]
+  const [reportError, setReportError] = useState<string | null>(null)
+
   useEffect(() => {
     fetchDashboard(month, memberId)
       .then(() => setError(null))
       .catch((e: Error) => setError(e.message))
   }, [month, memberId, fetchDashboard])
+
+  useEffect(() => {
+    fetchReport(month)
+      .then(() => setReportError(null))
+      .catch((e: Error) => setReportError(e.message))
+  }, [month, fetchReport])
+
+  const handleGenerateReport = () => {
+    setReportError(null)
+    generateReport(month).catch((e: Error) => setReportError(e.message))
+  }
 
   // 트리맵·스택바·범례가 같은 대분류명에 같은 색을 쓰도록 이름 기준으로 배색
   const colorByName = useMemo(() => {
@@ -183,6 +202,37 @@ export function DashboardPage() {
         <CardContent className="flex items-center gap-3 py-4">
           <span className="text-2xl">🌟</span>
           <p className="text-sm">{guideMessage(budgetTotal, budgetSpent, month)}</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <span>🤖</span> AI 리포트
+          </CardTitle>
+          <Button size="sm" onClick={handleGenerateReport} disabled={reportLoading}>
+            {reportLoading ? '생성 중…' : report ? '다시 생성' : '리포트 생성'}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {reportError && (
+            <p className="text-sm text-destructive">리포트 생성에 실패했습니다: {reportError}</p>
+          )}
+          {!reportError && report && (
+            <>
+              <MarkdownView>{report.content}</MarkdownView>
+              <p className="mt-3 text-xs text-muted-foreground">
+                {month} · {report.model} · {new Date(report.created_at).toLocaleString('ko-KR')}
+              </p>
+            </>
+          )}
+          {!reportError && !report && (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              {reportLoading
+                ? '리포트를 불러오는 중…'
+                : '아직 이 달의 AI 리포트가 없어요. 버튼을 눌러 생성해 보세요 ✨'}
+            </p>
+          )}
         </CardContent>
       </Card>
 

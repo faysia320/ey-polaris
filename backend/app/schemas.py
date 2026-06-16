@@ -1,4 +1,5 @@
 from datetime import date as date_type
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -218,6 +219,32 @@ class AssetsOut(BaseModel):
     # 구성원 필터와 무관한 가구 전체 총자산 — 공동 목표 달성률 계산용
     grand_total: int
     trend: list[MonthlyPoint]
+
+
+# ---------- AI Report ----------
+DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
+
+
+class AIReportOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    year_month: str
+    content: str
+    model: str
+    created_at: datetime
+
+
+class AISettingsOut(BaseModel):
+    # 보안 — 원문 API 키는 절대 반환하지 않는다. 등록 여부와 끝 4자리 힌트만 노출.
+    model: str
+    api_key_set: bool
+    api_key_hint: str | None = None
+
+
+class AISettingsUpdate(BaseModel):
+    # api_key 미포함(None)이면 기존 키 유지, 빈 문자열이면 변경 없음으로 취급.
+    api_key: str | None = None
+    model: str | None = Field(default=None, max_length=50)
 
 
 # ---------- Excel Import ----------

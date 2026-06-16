@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatKRW, KIND_LABEL } from '@/lib/format'
+import { useAISettingsStore } from '@/stores/aiSettings'
 import { useMasterDataStore } from '@/stores/masterData'
 import type { Account, AccountType, Category, CategoryNature, Member, TransactionKind } from '@/types'
 
@@ -612,6 +613,82 @@ function RowActions({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => 
   )
 }
 
+// ---------- AI 설정 탭 ----------
+function AISettingsTab() {
+  const { settings, fetch, save } = useAISettingsStore()
+  const [apiKey, setApiKey] = useState('')
+  // null = 아직 편집 안 함 → 서버 설정값을 표시. 입력 시작하면 그 값을 사용.
+  const [modelEdit, setModelEdit] = useState<string | null>(null)
+  const model = modelEdit ?? settings?.model ?? ''
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    fetch().catch((e: Error) => setError(e.message))
+  }, [fetch])
+
+  const handleSave = async () => {
+    setSaving(true)
+    setError(null)
+    setSaved(false)
+    try {
+      // 키 입력이 비어 있으면 기존 키 유지 (undefined 전송)
+      await save({ api_key: apiKey.trim() || undefined, model: model.trim() || undefined })
+      setApiKey('')
+      setModelEdit(null)
+      setSaved(true)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="max-w-md space-y-4">
+      <p className="text-sm text-muted-foreground">
+        대시보드 AI 리포트 생성에 사용할 OpenAI API 키와 모델을 설정합니다. 키는 서버에 저장되며 화면에
+        다시 표시되지 않습니다.
+      </p>
+      <div className="space-y-1.5">
+        <Label htmlFor="ai-key">OpenAI API 키</Label>
+        <Input
+          id="ai-key"
+          type="password"
+          autoComplete="off"
+          placeholder="sk-..."
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          {settings?.api_key_set
+            ? `키가 등록되어 있습니다 (${settings.api_key_hint}). 변경하려면 새 키를 입력하세요.`
+            : '아직 키가 등록되지 않았습니다.'}
+        </p>
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="ai-model">모델</Label>
+        <Input
+          id="ai-model"
+          placeholder="gpt-4.1-mini"
+          maxLength={50}
+          value={model}
+          onChange={(e) => setModelEdit(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          비우면 기본값(gpt-4.1-mini)이 사용됩니다. OpenAI의 가성비 모델을 권장합니다.
+        </p>
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      {saved && <p className="text-sm text-emerald-400">저장되었습니다.</p>}
+      <Button onClick={handleSave} disabled={saving}>
+        {saving ? '저장 중…' : '저장'}
+      </Button>
+    </div>
+  )
+}
+
 export function SettingsPage() {
   const { loaded, fetchAll } = useMasterDataStore()
   const [error, setError] = useState<string | null>(null)
@@ -628,10 +705,13 @@ export function SettingsPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">기준정보 관리</h1>
       <Tabs defaultValue="categories">
-        <TabsList>
+        {/* 탭이 4개 — 좁은 화면(375px)에서 페이지 가로 스크롤 대신 탭 목록 내부에서만 가로 스크롤.
+            overflow-y-hidden로 가로 스크롤이 세로 스크롤바를 승격시키는 부작용을 막는다 */}
+        <TabsList className="max-w-full justify-start overflow-x-auto overflow-y-hidden">
           <TabsTrigger value="categories">카테고리</TabsTrigger>
           <TabsTrigger value="accounts">자산 계정</TabsTrigger>
           <TabsTrigger value="members">구성원</TabsTrigger>
+          <TabsTrigger value="ai">AI 설정</TabsTrigger>
         </TabsList>
         <TabsContent value="categories" className="mt-4">
           <CategoriesTab />
@@ -641,6 +721,9 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="members" className="mt-4">
           <MembersTab />
+        </TabsContent>
+        <TabsContent value="ai" className="mt-4">
+          <AISettingsTab />
         </TabsContent>
       </Tabs>
     </div>

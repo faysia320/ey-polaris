@@ -200,3 +200,27 @@ export interface ImportResult {
   created_categories: string[]
   created_accounts: string[]
 }
+
+export interface AIReport {
+  id: number
+  year_month: string
+  /** 마크다운 리포트 본문 */
+  content: string
+  /** 생성에 사용한 OpenAI 모델명 */
+  model: string
+  created_at: string
+}
+
+export interface AISettings {
+  model: string
+  /** API 키 등록 여부 — 원문 키는 서버가 반환하지 않는다 */
+  api_key_set: boolean
+  /** 등록된 키 끝 4자리 힌트 (예: "…ab12"), 미등록이면 null */
+  api_key_hint: string | null
+}
+
+export interface AISettingsUpdate {
+  /** 미포함/빈 값이면 기존 키 유지 */
+  api_key?: string | null
+  model?: string | null
+}

@@ -8,6 +8,7 @@ from app.routers import (
     categories,
     goals,
     members,
+    settings,
     transactions,
     valuations,
 )
@@ -35,6 +36,7 @@ api.include_router(valuations.router)
 api.include_router(budgets.router)
 api.include_router(goals.router)
 api.include_router(analytics.router)
+api.include_router(settings.router)
 
 
 @api.get("/health", tags=["health"])

@@ -1,6 +1,17 @@
 from datetime import date as date_type
+from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, Date, ForeignKey, String, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -154,3 +165,34 @@ class Budget(Base):
     year_month: Mapped[str] = mapped_column(String(7), index=True)  # YYYY-MM
     major: Mapped[str] = mapped_column(String(100))  # 지출 대분류 이름
     amount: Mapped[int] = mapped_column(BigInteger)
+
+
+class AppSetting(Base):
+    """앱 전역 설정 키-값 저장소.
+
+    OpenAI API 키/모델처럼 런타임에 사용자가 바꿀 수 있는 값을 .env가 아니라 DB로 관리한다.
+    키: openai_api_key | openai_model. value는 NULL 허용(미설정 상태).
+    """
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(50), primary_key=True)
+    value: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class AIReport(Base):
+    """월별 AI 리포트 — 생성할 때마다 새 행으로 누적 저장(월당 제한 없음).
+
+    같은 월의 최신 리포트는 created_at(보조 id) 기준으로 조회한다. year_month는 인덱스만 두고
+    유니크 제약은 두지 않는다(이력 누적).
+    """
+
+    __tablename__ = "ai_reports"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    year_month: Mapped[str] = mapped_column(String(7), index=True)  # YYYY-MM
+    content: Mapped[str] = mapped_column(Text)  # 마크다운 리포트 본문
+    model: Mapped[str] = mapped_column(String(50))  # 생성에 사용한 OpenAI 모델명
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
