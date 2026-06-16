@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/lib/api'
 import { addMonths, currentMonth, formatKRW, monthPace } from '@/lib/format'
 import { useAnalyticsStore } from '@/stores/analytics'
@@ -293,7 +294,7 @@ export function DashboardPage() {
             </p>
           )}
           {detail && !detail.loading && !detail.error && (
-            <div className="max-h-80 overflow-y-auto">
+            <ScrollArea className="max-h-80">
               {detail.items.length === 0 && (
                 <p className="py-8 text-center text-sm text-muted-foreground">
                   해당 카테고리의 거래가 없습니다.
@@ -316,7 +317,7 @@ export function DashboardPage() {
                   <span className="shrink-0 font-medium tabular-nums">{formatKRW(t.amount)}</span>
                 </div>
               ))}
-            </div>
+            </ScrollArea>
           )}
         </DialogContent>
       </Dialog>

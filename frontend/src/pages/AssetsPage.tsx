@@ -18,6 +18,7 @@ import {
 import { DatePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/lib/api'
 import { formatKRW, todayISO } from '@/lib/format'
 import { useAnalyticsStore } from '@/stores/analytics'
@@ -378,8 +379,9 @@ export function AssetsPage() {
             {valuationHistory.length > 0 && (
               <div className="space-y-1">
                 <Label>평가 이력</Label>
-                <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
-                  {valuationHistory.map((v) => (
+                <ScrollArea className="max-h-40 rounded-md border">
+                  <div className="space-y-1 p-2">
+                    {valuationHistory.map((v) => (
                     <div key={v.id} className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">{v.date}</span>
                       <span className="flex items-center gap-1">
@@ -393,8 +395,9 @@ export function AssetsPage() {
                         </Button>
                       </span>
                     </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                </ScrollArea>
                 <p className="text-xs text-muted-foreground">
                   이력을 모두 삭제하면 잔액이 거래 기반 계산으로 돌아가요.
                 </p>

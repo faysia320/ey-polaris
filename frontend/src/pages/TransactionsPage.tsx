@@ -34,6 +34,7 @@ import { DatePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { MonthPicker } from '@/components/ui/month-picker'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Select,
   SelectContent,
@@ -906,13 +907,15 @@ export function TransactionsPage() {
                 </p>
               )}
               {importResult.skipped.length > 0 && (
-                <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
-                  {importResult.skipped.map((s) => (
-                    <p key={s.row} className="text-xs text-muted-foreground">
-                      {s.row}행: {s.reason}
-                    </p>
-                  ))}
-                </div>
+                <ScrollArea className="max-h-40 rounded-md border">
+                  <div className="space-y-1 p-2">
+                    {importResult.skipped.map((s) => (
+                      <p key={s.row} className="text-xs text-muted-foreground">
+                        {s.row}행: {s.reason}
+                      </p>
+                    ))}
+                  </div>
+                </ScrollArea>
               )}
             </div>
           ) : importPreview ? (
@@ -922,7 +925,8 @@ export function TransactionsPage() {
                 {importPreview.review.length}건만 정해주시면 돼요 — 내계좌이체 짝이 맞는 행은
                 자동으로 한 건의 이체가 돼요.
               </p>
-              <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
+              <ScrollArea className="max-h-[50vh]">
+                <div className="space-y-2 pr-1">
                 {importPreview.review.map((r) => {
                   const decision = reviewDecisions[r.row]
                   const pairAuto = isPairAuto(r.row, r.pair_row)
@@ -1009,7 +1013,8 @@ export function TransactionsPage() {
                     </div>
                   )
                 })}
-              </div>
+                </div>
+              </ScrollArea>
               {importError && <p className="text-sm text-destructive">{importError}</p>}
             </div>
           ) : (
