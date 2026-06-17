@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/lib/api'
-import { addMonths, currentMonth, formatKRW, monthPace } from '@/lib/format'
+import { addMonths, currentMonth, formatKRW } from '@/lib/format'
 import { useAIReportStore } from '@/stores/aiReport'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { useMemberFilterStore } from '@/stores/memberFilter'
@@ -46,18 +46,6 @@ function labelColorFor(hex: string): string {
   // 임계 0.5 — 0.6이면 중간 톤(#73a373 등)에 밝은 라벨이 배정돼 WCAG AA 미달
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
   return luminance > 0.5 ? '#1f2329' : '#eeeeee'
-}
-
-function guideMessage(budgetTotal: number, budgetSpent: number, month: string): string {
-  if (budgetTotal <= 0) {
-    return '이번 달 예산이 아직 없어요. 예산을 설정하면 북극성이 길을 안내해 드려요 🧭'
-  }
-  const rate = budgetSpent / budgetTotal
-  const pace = monthPace(month)
-  if (rate > 1) return '예산 궤도를 이탈했어요! 이번 달 예산을 초과했습니다 🚨'
-  if (rate >= pace * 1.1) return '북극성이 흐려지고 있어요! 지출 속도를 줄여주세요 🌫️'
-  if (rate < pace * 0.8) return '북극성이 밝게 빛나고 있어요. 순항 중! ✨'
-  return '정상 궤도를 유지하고 있어요 🛰️'
 }
 
 interface CategoryDetail {
@@ -197,13 +185,6 @@ export function DashboardPage() {
           <MemberFilterSelect />
         </div>
       </div>
-
-      <Card className="border-yellow-300/30 bg-gradient-to-r from-indigo-950/60 to-slate-900/60">
-        <CardContent className="flex items-center gap-3 py-4">
-          <span className="text-2xl">🌟</span>
-          <p className="text-sm">{guideMessage(budgetTotal, budgetSpent, month)}</p>
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
