@@ -98,6 +98,12 @@ const KIND_BADGE_VARIANT = {
   transfer: 'default',
 } as const
 
+/** 엑셀 평가액 반영 시 자산 유형 라벨 */
+const VALUATION_TYPE_LABEL: Record<'real_estate' | 'stock', string> = {
+  real_estate: '부동산',
+  stock: '주식',
+}
+
 const kindAmountClass = (kind: TransactionKind) =>
   kind === 'income' ? 'text-emerald-400' : kind === 'expense' ? 'text-rose-400' : 'text-sky-400'
 
@@ -359,7 +365,7 @@ export function TransactionsPage() {
     await Promise.all([fetch(), fetchAll()])
   }
 
-  // 1단계: 미리보기 — 이체 검토 행이 없으면 곧바로 확정까지 진행한다
+  // 1단계: 미리보기 — 검토할 이체 행도, 확인할 평가액도 없으면 곧바로 확정까지 진행한다
   const runImport = async () => {
     if (!importFile) return setImportError('업로드할 .xlsx 파일을 선택해주세요')
     if (!importMonth) return setImportError('가져올 월을 선택해주세요')
@@ -371,7 +377,7 @@ export function TransactionsPage() {
       body.append('file', importFile)
       body.append('month', importMonth)
       const preview = await api.upload<ImportPreview>('/transactions/import/preview', body)
-      if (preview.review.length === 0) {
+      if (preview.review.length === 0 && preview.valuations.length === 0) {
         await commitImport(preview)
       } else {
         // 기본 제안으로 결정 초기화 후 검토 단계 진입
@@ -877,11 +883,17 @@ export function TransactionsPage() {
         >
           <DialogHeader>
             <DialogTitle>
-              {importPreview && !importResult ? '이체 내역 검토' : '엑셀 업로드'}
+              {importPreview && !importResult
+                ? importPreview.review.length > 0
+                  ? '이체 내역 검토'
+                  : '업로드 내용 확인'
+                : '엑셀 업로드'}
             </DialogTitle>
             <DialogDescription>
               {importPreview && !importResult
-                ? '이체 타입 행은 자동 반영되지 않아요. 행마다 처리 방법을 정해주세요.'
+                ? importPreview.review.length > 0
+                  ? '이체 타입 행은 자동 반영되지 않아요. 행마다 처리 방법을 정해주세요.'
+                  : '아래 내용으로 가져올게요. 확인 후 진행해주세요.'
                 : '뱅크샐러드 내보내기 파일의 "가계부 내역"에서 선택한 달만 가져옵니다.'}
             </DialogDescription>
           </DialogHeader>
@@ -906,6 +918,11 @@ export function TransactionsPage() {
                   새 자산 계정: {importResult.created_accounts.join(', ')}
                 </p>
               )}
+              {importResult.valuation_count > 0 && (
+                <p className="text-muted-foreground">
+                  부동산·주식 평가액 {importResult.valuation_count}건을 오늘 날짜로 반영했어요.
+                </p>
+              )}
               {importResult.skipped.length > 0 && (
                 <ScrollArea className="max-h-40 rounded-md border">
                   <div className="space-y-1 p-2">
@@ -921,10 +938,39 @@ export function TransactionsPage() {
           ) : importPreview ? (
             <div className="space-y-3 text-sm">
               <p className="text-xs text-muted-foreground">
-                수입/지출 {importPreview.importable_count}건은 바로 등록돼요. 아래 이체{' '}
-                {importPreview.review.length}건만 정해주시면 돼요 — 내계좌이체 짝이 맞는 행은
-                자동으로 한 건의 이체가 돼요.
+                {importPreview.review.length > 0 ? (
+                  <>
+                    수입/지출 {importPreview.importable_count}건은 바로 등록돼요. 아래 이체{' '}
+                    {importPreview.review.length}건만 정해주시면 돼요 — 내계좌이체 짝이 맞는 행은
+                    자동으로 한 건의 이체가 돼요.
+                  </>
+                ) : (
+                  <>수입/지출 {importPreview.importable_count}건을 등록하고, 아래 평가액을 반영할게요.</>
+                )}
               </p>
+              {importPreview.valuations.length > 0 && (
+                <div className="space-y-1 rounded-md border p-2">
+                  <p className="text-xs font-medium">
+                    반영될 평가액 — 부동산·주식 {importPreview.valuations.length}건 (오늘 날짜)
+                  </p>
+                  <div className="space-y-1">
+                    {importPreview.valuations.map((v, i) => (
+                      <div
+                        key={`${i}-${v.account_type}-${v.product_name}`}
+                        className="flex items-center justify-between gap-2 text-xs"
+                      >
+                        <span className="flex min-w-0 items-center gap-1 text-muted-foreground">
+                          <Badge variant="secondary">
+                            {VALUATION_TYPE_LABEL[v.account_type]}
+                          </Badge>
+                          <span className="truncate">{v.product_name}</span>
+                        </span>
+                        <span className="shrink-0 tabular-nums">{formatKRW(v.value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <ScrollArea className="max-h-[50vh]">
                 <div className="space-y-2 pr-1">
                 {importPreview.review.map((r) => {

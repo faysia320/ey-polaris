@@ -48,6 +48,15 @@ class SkippedRow:
 
 
 @dataclass
+class ParsedValuation:
+    """뱅샐현황 "재무현황" 자산 표에서 추출한 시세형 자산 평가액 한 줄."""
+
+    product_name: str  # 엑셀 상품명 — 자산 계정명과 매칭한다
+    account_type: str  # real_estate | stock
+    value: int  # KRW 정수(원), 0 이상
+
+
+@dataclass
 class ReviewRow:
     """이체 타입 행 — 자동 반영하지 않고 사용자 결정을 기다리는 검토 대상.
 
@@ -232,3 +241,75 @@ def guess_account_type(name: str) -> str:
     if "현금" in name:
         return "cash"
     return "other"
+
+
+# 평가액을 읽는 첫 시트와 자산 분류→계정 유형 매핑
+VALUATION_SHEET = "뱅샐현황"
+VALUATION_ITEM_TYPES = {"부동산": "real_estate", "투자성 자산": "stock"}
+
+
+def parse_valuations(content: bytes) -> list[ParsedValuation]:
+    """뱅샐현황 시트의 "재무현황" 자산 표에서 부동산·주식 평가액을 추출한다.
+
+    항목(자산 분류) 셀은 그룹의 첫 행에만 있고 이후 행은 엑셀 병합으로 비어 있으므로
+    마지막 분류를 carry-forward 한다. 부동산→real_estate, 투자성 자산→stock으로 매핑하고,
+    '총자산'/'순자산' 등 집계 행이나 다음 섹션 헤더에서 표를 종료한다. 행 위치는 파일마다
+    다를 수 있어 헤더(항목/상품명/금액)를 탐지해 컬럼을 잡는다.
+
+    시트가 없거나 자산 표를 찾지 못하면 빈 목록을 반환한다 — 평가 반영은 선택 사항이므로
+    가져오기 자체를 막지 않는다. 0원 행도 그대로 반환하며, 신규 생성/갱신 정책은 호출 측이 정한다.
+    """
+    try:
+        workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
+    except Exception:  # 손상/비xlsx 등 — 평가는 선택 사항이므로 조용히 건너뛴다
+        return []
+
+    try:
+        if VALUATION_SHEET not in workbook.sheetnames:
+            return []
+        sheet = workbook[VALUATION_SHEET]
+        rows = sheet.iter_rows(values_only=True)
+
+        # 자산 표 헤더(항목/상품명/금액)를 찾아 컬럼 인덱스를 잡는다 (부채 측 동명 컬럼은 무시)
+        item_col = product_col = amount_col = None
+        for values in rows:
+            cleaned = [_clean(v) for v in values]
+            if "항목" in cleaned and "상품명" in cleaned and "금액" in cleaned:
+                try:
+                    item_col = cleaned.index("항목")
+                    product_col = cleaned.index("상품명", item_col + 1)
+                    amount_col = cleaned.index("금액", product_col + 1)
+                except ValueError:
+                    # 항목→상품명→금액 순서가 아니면 자산 표 헤더가 아님 — 다음 행 탐색
+                    item_col = None
+                    continue
+                break
+        if item_col is None:
+            return []
+
+        result: list[ParsedValuation] = []
+        current_item = ""
+        for values in rows:  # 헤더 다음 행부터 (제너레이터가 이미 헤더를 소비함)
+            raw_item = _clean(values[item_col]) if item_col < len(values) else ""
+            if raw_item in ("총자산", "순자산"):
+                break  # 자산 표 끝
+            if raw_item[:1].isdigit() and "." in raw_item[:3]:
+                break  # 다음 섹션 헤더(예: '4.보험현황')
+            if raw_item:
+                current_item = raw_item
+            account_type = VALUATION_ITEM_TYPES.get(current_item)
+            if account_type is None:
+                continue
+            product = _clean(values[product_col]) if product_col < len(values) else ""
+            amount = values[amount_col] if amount_col < len(values) else None
+            if not product or not isinstance(amount, (int, float)):
+                continue
+            value = int(amount)
+            if value < 0:
+                continue
+            result.append(
+                ParsedValuation(product_name=product, account_type=account_type, value=value)
+            )
+        return result
+    finally:
+        workbook.close()

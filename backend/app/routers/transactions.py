@@ -145,22 +145,56 @@ def _suggest_action(row: excel_import.ReviewRow) -> schemas.ImportAction:
     return "income" if row.amount > 0 else "expense"
 
 
+def _effective_valuations(
+    content: bytes, accounts: dict[str, models.Account]
+) -> list[excel_import.ParsedValuation]:
+    """뱅샐현황 평가액 중 실제로 반영될 항목만 추린다(미리보기·적재 공유).
+
+    - 같은 상품명은 합치되, 0원이 비영 평가액을 덮어쓰지 않도록 마지막 비영값을 우선한다.
+    - 동명 계정이 stock/real_estate가 아니면(은행 등) 매칭하지 않는다.
+    - 동명 계정이 없고 값이 0원이면 신규 계정을 만들지 않으므로 제외한다.
+
+    accounts(이름→계정)는 현재 DB 상태이며, 미리보기와 확정이 같은 집합·건수를 보장한다.
+    """
+    deduped: dict[str, excel_import.ParsedValuation] = {}
+    for v in excel_import.parse_valuations(content):
+        prev = deduped.get(v.product_name)
+        if prev is not None and v.value == 0 and prev.value != 0:
+            continue
+        deduped[v.product_name] = v
+
+    effective: list[excel_import.ParsedValuation] = []
+    for v in deduped.values():
+        account = accounts.get(v.product_name)
+        if account is not None:
+            if account.type not in ("stock", "real_estate"):
+                continue  # 동명의 비시세형 계정과는 매칭하지 않음
+        elif v.value == 0:
+            continue  # 0원 신규 항목은 생성하지 않음
+        effective.append(v)
+    return effective
+
+
 @router.post("/import/preview", response_model=schemas.ImportPreview)
 def preview_import(
     file: UploadFile = File(description="뱅크샐러드 내보내기 .xlsx 파일"),
     month: str = Form(pattern=schemas.YEAR_MONTH_PATTERN),
+    db: Session = Depends(get_db),
 ):
     """업로드 확정 전 미리보기 — DB를 변경하지 않는다.
 
     이체 타입 행을 검토 대상으로 반환한다. 행별 결정(decisions)과 함께
-    POST /transactions/import 를 호출하면 확정된다.
+    POST /transactions/import 를 호출하면 확정된다. 평가액 미리보기는 실제 적재와
+    동일한 정책(_effective_valuations)으로 산출해 건수·목록이 결과와 일치한다.
     """
+    content = file.file.read()
     try:
-        parsed, review, skipped, month_rows = excel_import.parse_ledger(file.file.read(), month)
+        parsed, review, skipped, month_rows = excel_import.parse_ledger(content, month)
     except excel_import.ExcelFormatError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     if month_rows == 0:
         raise HTTPException(status_code=422, detail=f"{month}에 해당하는 가계부 내역이 없습니다")
+    accounts = {a.name: a for a in db.scalars(select(models.Account)).all()}
     return schemas.ImportPreview(
         month=month,
         month_rows=month_rows,
@@ -180,6 +214,12 @@ def preview_import(
             for r in review
         ],
         skipped=[schemas.ImportSkippedRow(row=s.row, reason=s.reason) for s in skipped],
+        valuations=[
+            schemas.ImportValuationRow(
+                product_name=v.product_name, account_type=v.account_type, value=v.value
+            )
+            for v in _effective_valuations(content, accounts)
+        ],
     )
 
 
@@ -212,8 +252,9 @@ def import_transactions(
         raise HTTPException(status_code=422, detail="검토 결정(decisions) 형식이 올바르지 않습니다")
     decisions_by_row = {d.row: d for d in decision_list}
 
+    content = file.file.read()
     try:
-        parsed, review, skipped, month_rows = excel_import.parse_ledger(file.file.read(), month)
+        parsed, review, skipped, month_rows = excel_import.parse_ledger(content, month)
     except excel_import.ExcelFormatError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     if month_rows == 0:
@@ -372,6 +413,39 @@ def import_transactions(
         )
         transfer_count += 1
 
+    # 자산 평가액 — 뱅샐현황 자산 표의 부동산·주식 평가액을 오늘 날짜로 반영한다(선택 월과 무관).
+    # 반영 대상은 미리보기와 동일한 정책(_effective_valuations)으로 추린다: 상품명 dedupe,
+    # 0원 신규 미생성, 동명 비시세형 계정 제외. 남은 항목은 매칭 계정에 upsert하거나 신규 생성한다.
+    valuation_date = date.today()
+    valuation_count = 0
+    for v in _effective_valuations(content, accounts):
+        account = accounts.get(v.product_name)
+        if account is None:
+            account = models.Account(
+                name=v.product_name,
+                type=v.account_type,
+                opening_balance=0,
+                is_active=True,
+                member_id=member_id,
+            )
+            db.add(account)
+            db.flush()
+            accounts[v.product_name] = account
+            created_accounts.append(account.name)
+        existing = db.scalar(
+            select(models.AssetValuation).where(
+                models.AssetValuation.account_id == account.id,
+                models.AssetValuation.date == valuation_date,
+            )
+        )
+        if existing:
+            existing.value = v.value
+        else:
+            db.add(
+                models.AssetValuation(account_id=account.id, date=valuation_date, value=v.value)
+            )
+        valuation_count += 1
+
     commit_or_conflict(db, "가져오기 저장 중 무결성 오류가 발생했습니다")
     return schemas.ImportResult(
         month=month,
@@ -382,4 +456,5 @@ def import_transactions(
         skipped=skipped_out,
         created_categories=created_categories,
         created_accounts=created_accounts,
+        valuation_count=valuation_count,
     )

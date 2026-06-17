@@ -172,6 +172,14 @@ export interface ImportReviewRow {
   suggested: ImportAction
 }
 
+/** 뱅샐현황 자산 표에서 읽은 부동산·주식 평가액 (오늘 날짜로 반영 예정) */
+export interface ImportValuationRow {
+  /** 엑셀 상품명 — 같은 이름의 계정과 매칭 */
+  product_name: string
+  account_type: 'real_estate' | 'stock'
+  value: number
+}
+
 export interface ImportPreview {
   month: string
   month_rows: number
@@ -179,6 +187,7 @@ export interface ImportPreview {
   importable_count: number
   review: ImportReviewRow[]
   skipped: ImportSkippedRow[]
+  valuations: ImportValuationRow[]
 }
 
 export interface ImportDecision {
@@ -199,6 +208,8 @@ export interface ImportResult {
   skipped: ImportSkippedRow[]
   created_categories: string[]
   created_accounts: string[]
+  /** 오늘 날짜로 기록·갱신된 부동산·주식 평가액 수 */
+  valuation_count: number
 }
 
 export interface AIReport {
