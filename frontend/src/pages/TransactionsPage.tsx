@@ -446,10 +446,12 @@ export function TransactionsPage() {
         <h1 className="text-2xl font-semibold">지출/수입 내역</h1>
         <div className="flex flex-wrap items-center gap-2">
           <MemberFilterSelect />
-          <div className="flex rounded-lg border p-0.5">
+          {/* 높이를 h-8(=select 트리거)로 고정하고 버튼이 padding 영역을 채우도록 h-full 부여 */}
+          <div className="flex h-8 rounded-lg border p-0.5">
             <Button
               variant={view === 'table' ? 'secondary' : 'ghost'}
               size="sm"
+              className="h-full"
               onClick={() => switchView('table')}
             >
               <Table2 /> 테이블
@@ -457,6 +459,7 @@ export function TransactionsPage() {
             <Button
               variant={view === 'calendar' ? 'secondary' : 'ghost'}
               size="sm"
+              className="h-full"
               onClick={() => switchView('calendar')}
             >
               <CalendarDays /> 캘린더
