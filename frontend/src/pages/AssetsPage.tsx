@@ -59,7 +59,10 @@ export function AssetsPage() {
     update: updateGoal,
     remove: removeGoal,
   } = useGoalStore();
+  // 자산 조회 자체가 실패한 치명적 상태 — 페이지를 통째로 대체한다
   const [error, setError] = useState<string | null>(null);
+  // 삭제는 성공했으나 목록 재조회만 실패한 비치명적 알림 — 페이지는 그대로 두고 배너로만 알린다
+  const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
   // 목표 조회/삭제 실패는 페이지 전체가 아니라 목표 카드 안에서만 보여준다
   const [goalListError, setGoalListError] = useState<string | null>(null);
 
@@ -71,17 +74,20 @@ export function AssetsPage() {
   const [valuationValue, setValuationValue] = useState("");
   const [valuationError, setValuationError] = useState<string | null>(null);
   const [valuationHistory, setValuationHistory] = useState<Valuation[]>([]);
-  // 평가액 삭제 확인 — 확정 전까지 대상만 들고 있는다 (평가액 갱신 다이얼로그 위에 겹쳐 뜬다)
-  const [valuationToDelete, setValuationToDelete] = useState<Valuation | null>(
-    null,
-  );
+  // 평가액 삭제 확인 — 평가액 갱신 다이얼로그 위에 겹쳐 뜬다.
+  // 계정 id를 열 때 함께 캡처해 두면 바깥 다이얼로그가 먼저 닫혀도 삭제가 성립한다.
+  const [valuationToDelete, setValuationToDelete] = useState<{
+    accountId: number;
+    valuation: Valuation;
+  } | null>(null);
   const [valuationDeleteError, setValuationDeleteError] = useState<
     string | null
   >(null);
   const [valuationDeleting, setValuationDeleting] = useState(false);
 
   // 자산 계정 삭제 확인
-  const deleteAccount = useMasterDataStore((s) => s.deleteAccount);
+  // 삭제는 api를 직접 호출하고(위 confirmAccountDelete 주석 참조) 마스터 데이터만 재동기화한다
+  const fetchAllMasterData = useMasterDataStore((s) => s.fetchAll);
   const [accountToDelete, setAccountToDelete] = useState<AccountBalance | null>(
     null,
   );
@@ -99,7 +105,11 @@ export function AssetsPage() {
   const [goalError, setGoalError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchAssets(memberId).catch((e: Error) => setError(e.message));
+    // 성공 시 error를 해제한다 — 해제 경로가 없으면 일시적 장애 후 구성원 필터를
+    // 바꿔 다시 불러와도 전면 에러 화면(:error 조기 반환)에서 빠져나오지 못한다
+    fetchAssets(memberId)
+      .then(() => setError(null))
+      .catch((e: Error) => setError(e.message));
   }, [fetchAssets, memberId]);
 
   useEffect(() => {
@@ -171,9 +181,13 @@ export function AssetsPage() {
           <span className="min-w-0 truncate">{a.name}</span>
           <span className="flex shrink-0 items-center gap-1">
             {!a.is_active && <Badge variant="secondary">비활성</Badge>}
+            {/* 시각적 크기는 앱 전역 icon-sm(28px) 관례를 따르되, 터치 히트 영역만
+                의사요소로 44px까지 넓힌다 (28 + inset 8*2). 평가 이력의 삭제 버튼은
+                행 간격이 좁아 같은 처리를 하면 이웃 행을 잘못 누르므로 제외했다 */}
             <Button
               variant="ghost"
               size="icon-sm"
+              className="relative after:absolute after:-inset-2 after:content-['']"
               title={`${a.name} 삭제`}
               aria-label={`${a.name} 삭제`}
               onClick={() => openAccountDelete(a)}
@@ -213,37 +227,48 @@ export function AssetsPage() {
     setAccountDeleteError(null);
   };
 
-  // 삭제 실패(거래 참조 409 등)는 다이얼로그를 닫지 않고 사유를 그대로 보여준다
+  // 삭제 실패(거래 참조 409 등)는 다이얼로그를 닫지 않고 사유를 그대로 보여준다.
+  // 삭제 호출과 목록 재조회를 분리하는 이유: 스토어의 deleteAccount는 성공 후 fetchAll을
+  // 이어서 부르므로, 재조회만 실패해도 catch에 걸려 "삭제 실패"처럼 보인다(실제로는 삭제됨).
+  // 삭제가 확정된 뒤의 재조회 실패는 화면을 갈아엎지 않고 배너(refreshNotice)로만 알린다 —
+  // 이때 화면의 자산 데이터는 (조금 낡았을 뿐) 여전히 유효하므로 전면 에러로 올리면 안 된다.
   const confirmAccountDelete = async () => {
     if (!accountToDelete) return;
     setAccountDeleting(true);
     try {
-      await deleteAccount(accountToDelete.id);
-      setAccountToDelete(null);
-      await fetchAssets(memberId);
+      await api.delete(`/accounts/${accountToDelete.id}`);
     } catch (e) {
       setAccountDeleteError((e as Error).message);
+      return;
     } finally {
       setAccountDeleting(false);
     }
+    setAccountToDelete(null);
+    try {
+      await Promise.all([fetchAllMasterData(), fetchAssets(memberId)]);
+      setRefreshNotice(null);
+    } catch (e) {
+      setRefreshNotice(
+        `계정은 삭제됐지만 목록을 새로고침하지 못했습니다: ${(e as Error).message}`,
+      );
+    }
   };
 
-  const openValuationDelete = (valuation: Valuation) => {
-    setValuationToDelete(valuation);
+  const openValuationDelete = (accountId: number, valuation: Valuation) => {
+    setValuationToDelete({ accountId, valuation });
     setValuationDeleteError(null);
   };
 
   const confirmValuationDelete = async () => {
-    if (!valuationTarget || !valuationToDelete) return;
+    if (!valuationToDelete) return; // 다이얼로그가 열려 있으면 항상 non-null
+    const { accountId, valuation } = valuationToDelete;
     setValuationDeleting(true);
     try {
-      await api.delete(
-        `/accounts/${valuationTarget.id}/valuations/${valuationToDelete.id}`,
-      );
+      await api.delete(`/accounts/${accountId}/valuations/${valuation.id}`);
       setValuationError(null);
       setValuationToDelete(null);
       await Promise.all([
-        loadValuationHistory(valuationTarget.id),
+        loadValuationHistory(accountId),
         fetchAssets(memberId),
       ]);
     } catch (e) {
@@ -335,6 +360,10 @@ export function AssetsPage() {
         <h1 className="text-2xl font-semibold">자산 상태</h1>
         <MemberFilterSelect />
       </div>
+
+      {refreshNotice && (
+        <p className="text-sm text-destructive">{refreshNotice}</p>
+      )}
 
       <Card className="border-yellow-300/30">
         <CardHeader>
@@ -537,7 +566,7 @@ export function AssetsPage() {
                 onChange={(e) => setValuationValue(e.target.value)}
               />
             </div>
-            {valuationHistory.length > 0 && (
+            {valuationTarget && valuationHistory.length > 0 && (
               <div className="space-y-1">
                 <Label>평가 이력</Label>
                 <ScrollArea className="max-h-40 rounded-md border">
@@ -555,7 +584,9 @@ export function AssetsPage() {
                             size="icon-sm"
                             title={`${v.date} 평가액 삭제`}
                             aria-label={`${v.date} 평가액 삭제`}
-                            onClick={() => openValuationDelete(v)}
+                            onClick={() =>
+                              openValuationDelete(valuationTarget.id, v)
+                            }
                           >
                             <Trash2 className="text-destructive" />
                           </Button>
@@ -591,9 +622,9 @@ export function AssetsPage() {
           <DialogHeader>
             <DialogTitle>평가액 삭제</DialogTitle>
             <DialogDescription>
-              {valuationToDelete?.date} 기준{" "}
-              {valuationToDelete && formatKRW(valuationToDelete.value)} 기록을
-              삭제할게요. 되돌릴 수 없어요.
+              {valuationToDelete?.valuation.date} 기준{" "}
+              {valuationToDelete && formatKRW(valuationToDelete.valuation.value)}{" "}
+              기록을 삭제할게요. 되돌릴 수 없어요.
             </DialogDescription>
           </DialogHeader>
           {valuationDeleteError && (
