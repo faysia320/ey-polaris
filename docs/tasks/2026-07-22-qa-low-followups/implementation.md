@@ -2,7 +2,7 @@
 
 - 날짜: 2026-07-22
 - 기반 명세: **경량 모드** — 명세 원본은 `docs/tasks/2026-07-22-asset-delete-and-stock-manual-total/qa-report.md`의 "발견 이슈" Low 4건 (2차 QA, 판정 PASS)
-- 이력: 1차 구현 → `/qa` **CONDITIONAL PASS**(Medium 1건) → 2차 수정(본 문서 반영)
+- 이력: 1차 구현 → `/qa` **CONDITIONAL PASS**(Medium 1건) → 2차 수정 → `/qa` **PASS**(Low 3건) → 3차 정리(Low 2건 반영, 본 문서)
 
 ## 성공 기준 (경량 모드 — 착수 전 정의)
 
@@ -62,7 +62,22 @@ Low 4는 사용자 결정에 따라 코드 변경 없음 (아래 참조).
 
 코드 변경 없음. 개발 DB 단일 환경이고 이미 적용이 끝난 1회성 작업이며, SQL 원문과 적용 결과가 `2026-07-22-asset-delete-and-stock-manual-total/implementation.md`의 "통합 SQL 기록" 절에 남아 추적 가능하다. research.md도 자동 마이그레이션을 명시적으로 범위 밖에 뒀다.
 
+### [3차] PASS 후 Low 2건 정리
+
+2차 PASS 판정과 함께 QA가 남긴 Low 3건 중, 이번 diff가 만든 결함 2건을 정리했다(세 번째 비활성 Badge 3px 겹침은 히트 영역 확대의 의도된 트레이드오프라 유지).
+
+- **`refreshNotice` 해제 비대칭** (`AssetsPage.tsx:249-253` 관련) — 해제가 삭제 경로에만 있어, 장애 복구 후 구성원 필터를 바꿔 재조회가 성공해도 배너가 남았다. `fetchAssets` 성공 핸들러에서 `setError(null)`과 함께 `setRefreshNotice(null)`도 호출하도록 대칭을 맞췄다. 페이지가 살아 있는 한(refreshNotice는 전면 대체가 아님) 필터 변경만으로 해제된다.
+- **`error` 해제 주석의 도달 불가 시나리오** — 1차 주석이 "구성원 필터를 바꿔 다시 불러와도"라고 했으나, `error` 화면은 `MemberFilterSelect`까지 대체하므로 그 화면에서 필터로 재조회하는 경로는 없다(QA 실측 `triggerPresentOnErrorScreen: false`). 주석을 실제 메커니즘에 맞게 고쳤다: error 화면의 복구는 라우팅 이동→복귀(리마운트) 시 effect 재실행, refreshNotice의 해제는 필터 변경으로도 가능 — 두 상태의 복구 경로가 다름을 명시. 코드 동작 자체는 이미 옳았고(주석만 사실과 어긋났음) 문구만 정정했다.
+
+이 3차 정리는 주석 정정과 상태 해제 한 줄 추가라는 국소 변경이라 별도 QA 사이클 없이 마무리한다.
+
 ## 자체 검증 결과
+
+**3차 (PASS 후 Low 2건 정리)**
+
+- `cd frontend && npm run build` → **통과** (`✓ built in 1.57s`, 오류 0, 번들 `index-CJp3hCvn.js`)
+- `cd frontend && npm run lint` → **통과** (0 errors, 2 warnings — 기존 항목)
+- `docker compose up -d --build frontend` → 서빙 번들 `index-CJp3hCvn.js`로 빌드 산출물과 일치
 
 **2차 (QA Medium 수정 후)**
 

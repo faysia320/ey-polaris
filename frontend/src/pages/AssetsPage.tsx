@@ -105,10 +105,16 @@ export function AssetsPage() {
   const [goalError, setGoalError] = useState<string | null>(null);
 
   useEffect(() => {
-    // 성공 시 error를 해제한다 — 해제 경로가 없으면 일시적 장애 후 구성원 필터를
-    // 바꿔 다시 불러와도 전면 에러 화면(:error 조기 반환)에서 빠져나오지 못한다
+    // 자산 조회가 성공하면 이전 실패 상태를 모두 해제한다 — error(전면 에러 화면)와
+    // refreshNotice(삭제 후 재조회 실패 배너) 둘 다. 해제 경로가 없으면 일시적 장애가
+    // 풀린 뒤에도 경고가 계속 남는다. error 화면일 때는 MemberFilterSelect까지 대체되어
+    // 필터로는 재조회를 못 하므로, 그 경우의 복구는 라우팅 이동→복귀(리마운트) 시 이 effect
+    // 재실행으로 이뤄진다. refreshNotice는 페이지가 살아 있어 필터 변경으로도 해제된다.
     fetchAssets(memberId)
-      .then(() => setError(null))
+      .then(() => {
+        setError(null);
+        setRefreshNotice(null);
+      })
       .catch((e: Error) => setError(e.message));
   }, [fetchAssets, memberId]);
 
