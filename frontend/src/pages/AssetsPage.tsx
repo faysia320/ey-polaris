@@ -85,6 +85,17 @@ export function AssetsPage() {
       fetchGoals().catch((e: Error) => setGoalListError(e.message));
   }, [fetchGoals, goalsLoaded]);
 
+  // 구성원 필터가 "전체"일 때만 자산 유형 안에서 구성원별로 나눠 보여준다.
+  // 구성원 목록은 응답에서 도출하므로 이름을 하드코딩하지 않는다 (id 오름차순 = 좌→우).
+  const splitMembers = useMemo(() => {
+    if (memberId !== null || !assets) return [];
+    const byId = new Map<number, string>();
+    for (const a of assets.accounts) byId.set(a.member_id, a.member_name);
+    return [...byId.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([id, name]) => ({ id, name }));
+  }, [memberId, assets]);
+
   const trendOption = useMemo<EChartsOption>(() => {
     const trend = assets?.trend ?? [];
     return {
@@ -127,6 +138,40 @@ export function AssetsPage() {
     setValuationHistory([]);
     void loadValuationHistory(account.id);
   };
+
+  // 유형별 그리드와 구성원별 분할 양쪽에서 같은 계정 카드를 쓴다
+  const renderAccountCard = (a: AccountBalance) => (
+    <Card key={a.id} className={a.is_active ? "" : "opacity-50"}>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between text-base">
+          <span>{a.name}</span>
+          {!a.is_active && <Badge variant="secondary">비활성</Badge>}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p
+          className={`text-xl font-semibold ${a.balance < 0 ? "text-rose-400" : ""}`}
+        >
+          {formatKRW(a.balance)}
+        </p>
+        {a.valued_at && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            평가 기준일 {a.valued_at}
+          </p>
+        )}
+        {VALUATION_TYPES.includes(a.type) && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={() => openValuation(a)}
+          >
+            평가액 갱신
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
 
   const deleteValuation = async (valuationId: number) => {
     if (!valuationTarget) return;
@@ -316,7 +361,8 @@ export function AssetsPage() {
       </Card>
 
       {/* 계정 카드 — 유형(카테고리)별 그룹 카드 안에 중첩. 계정이 없는 유형은 표시하지 않는다.
-          간편결제는 연결 계정으로 귀속되므로 그룹으로 표시하지 않는다 */}
+          간편결제는 연결 계정으로 귀속되므로 그룹으로 표시하지 않는다.
+          구성원 필터가 "전체"면 유형 안에서 다시 구성원별로 나눠 보여준다 */}
       {(Object.keys(ACCOUNT_TYPE_LABEL) as AccountType[]).map((type) => {
         if (HIDDEN_GROUP_TYPES.includes(type)) return null;
         const group = assets?.accounts.filter((a) => a.type === type) ?? [];
@@ -333,42 +379,42 @@ export function AssetsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {group.map((a) => (
-                  <Card key={a.id} className={a.is_active ? "" : "opacity-50"}>
-                    <CardHeader>
-                      <CardTitle className="flex items-center justify-between text-base">
-                        <span>{a.name}</span>
-                        {!a.is_active && (
-                          <Badge variant="secondary">비활성</Badge>
+              {splitMembers.length > 1 ? (
+                // 모바일은 세로 적층, sm 이상에서 구성원별 좌/우 분할
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {splitMembers.map((m) => {
+                    const owned = group.filter((a) => a.member_id === m.id);
+                    const ownedTotal = owned.reduce(
+                      (sum, a) => sum + a.balance,
+                      0,
+                    );
+                    return (
+                      <div key={m.id} className="space-y-2">
+                        <div className="flex items-baseline justify-between border-b pb-1">
+                          <span className="text-sm font-medium">{m.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {formatKRW(ownedTotal)}
+                          </span>
+                        </div>
+                        {owned.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">
+                            계정 없음
+                          </p>
+                        ) : (
+                          // 분할로 폭이 절반이라 xl 이상에서만 2열로 늘린다
+                          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                            {owned.map(renderAccountCard)}
+                          </div>
                         )}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p
-                        className={`text-xl font-semibold ${a.balance < 0 ? "text-rose-400" : ""}`}
-                      >
-                        {formatKRW(a.balance)}
-                      </p>
-                      {a.valued_at && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          평가 기준일 {a.valued_at}
-                        </p>
-                      )}
-                      {VALUATION_TYPES.includes(a.type) && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="mt-3"
-                          onClick={() => openValuation(a)}
-                        >
-                          평가액 갱신
-                        </Button>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {group.map(renderAccountCard)}
+                </div>
+              )}
             </CardContent>
           </Card>
         );

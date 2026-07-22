@@ -107,6 +107,9 @@ export interface AccountBalance {
   balance: number
   /** 잔액이 평가액 기반이면 해당 평가 기준일(YYYY-MM-DD), 아니면 null */
   valued_at: string | null
+  /** 소유 구성원 — 구성원별 분할 표시에 사용 */
+  member_id: number
+  member_name: string
 }
 
 export interface Valuation {

@@ -62,6 +62,37 @@ def _validate_refs(db: Session, payload: schemas.TransactionCreate) -> None:
         )
 
 
+def _filter_conditions(
+    month: str | None,
+    kind: str | None,
+    category_id: int | None,
+    major: str | None,
+    account_id: int | None,
+    member_id: int | None,
+) -> list:
+    """목록 조회와 월 일괄 삭제가 공유하는 필터 조건.
+
+    삭제가 '화면에 보이는 것만' 지우려면 두 곳의 조건이 항상 같아야 하므로
+    한 곳에서만 정의한다.
+    """
+    conditions = []
+    if month:
+        start, end = _month_range(month)
+        conditions += [models.Transaction.date >= start, models.Transaction.date < end]
+    if kind:
+        conditions.append(models.Transaction.kind == kind)
+    if category_id:
+        conditions.append(models.Transaction.category_id == category_id)
+    if major:
+        # 대분류만 고른 경우 — 소분류 전체를 포괄하는 필터
+        conditions.append(models.Transaction.category.has(models.Category.major == major))
+    if account_id:
+        conditions.append(models.Transaction.account_id == account_id)
+    if member_id:
+        conditions.append(models.Transaction.member_id == member_id)
+    return conditions
+
+
 @router.get("", response_model=list[schemas.TransactionOut])
 def list_transactions(
     month: str | None = Query(default=None, pattern=schemas.YEAR_MONTH_PATTERN),
@@ -80,23 +111,35 @@ def list_transactions(
             selectinload(models.Transaction.counter_account),
             selectinload(models.Transaction.member),
         )
+        .where(*_filter_conditions(month, kind, category_id, major, account_id, member_id))
         .order_by(models.Transaction.date.desc(), models.Transaction.id.desc())
     )
-    if month:
-        start, end = _month_range(month)
-        stmt = stmt.where(models.Transaction.date >= start, models.Transaction.date < end)
-    if kind:
-        stmt = stmt.where(models.Transaction.kind == kind)
-    if category_id:
-        stmt = stmt.where(models.Transaction.category_id == category_id)
-    if major:
-        # 대분류만 고른 경우 — 소분류 전체를 포괄하는 필터
-        stmt = stmt.where(models.Transaction.category.has(models.Category.major == major))
-    if account_id:
-        stmt = stmt.where(models.Transaction.account_id == account_id)
-    if member_id:
-        stmt = stmt.where(models.Transaction.member_id == member_id)
     return [_to_out(t) for t in db.scalars(stmt).all()]
+
+
+@router.delete("", response_model=schemas.BulkDeleteResult)
+def delete_transactions_by_month(
+    # month는 필수 — 미지정 시 전체 거래가 지워지는 사고를 막는다
+    month: str = Query(pattern=schemas.YEAR_MONTH_PATTERN),
+    kind: schemas.CategoryKind | None = None,
+    category_id: int | None = None,
+    major: str | None = None,
+    account_id: int | None = None,
+    member_id: int | None = None,
+    db: Session = Depends(get_db),
+):
+    """현재 조회 필터에 걸리는 해당 월 거래를 일괄 삭제한다."""
+    conditions = _filter_conditions(month, kind, category_id, major, account_id, member_id)
+    # major 필터의 EXISTS 서브쿼리까지 한 문장에 실어 단일 쿼리로 지운다
+    # (id를 먼저 뽑아 IN으로 지우면 그 사이 삽입된 행을 놓치고, 건수가 많으면
+    #  bind 파라미터 상한에도 걸린다)
+    deleted = db.execute(
+        delete(models.Transaction).where(*conditions).execution_options(
+            synchronize_session=False
+        )
+    ).rowcount
+    db.commit()
+    return schemas.BulkDeleteResult(deleted_count=deleted)
 
 
 @router.post("", response_model=schemas.TransactionOut, status_code=201)

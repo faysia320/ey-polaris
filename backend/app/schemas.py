@@ -206,6 +206,9 @@ class AccountBalance(BaseModel):
     balance: int
     # 잔액이 평가액 기반이면 해당 평가 기준일, 아니면 None
     valued_at: date_type | None = None
+    # 소유 구성원 — 자산 페이지에서 구성원별로 나눠 표시하는 데 사용
+    member_id: int
+    member_name: str
 
 
 class MonthlyPoint(BaseModel):
@@ -294,6 +297,10 @@ class ImportDecision(BaseModel):
     counter_account_id: int | None = Field(
         default=None, description="transfer 전용 상대 계정 — 페어 행이면 생략 가능"
     )
+
+
+class BulkDeleteResult(BaseModel):
+    deleted_count: int = Field(description="일괄 삭제된 거래 수")
 
 
 class ImportResult(BaseModel):

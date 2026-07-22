@@ -111,7 +111,8 @@ const kindAmountSign = (kind: TransactionKind) =>
   kind === 'income' ? '+' : kind === 'expense' ? '-' : ''
 
 export function TransactionsPage() {
-  const { items, filters, fetch, setFilters, create, update, remove } = useTransactionStore()
+  const { items, filters, fetch, setFilters, create, update, remove, removeMonth } =
+    useTransactionStore()
   const { categories, accounts, members, loaded, fetchAll } = useMasterDataStore()
   const memberId = useMemberFilterStore((s) => s.memberId)
 
@@ -123,6 +124,15 @@ export function TransactionsPage() {
   const [form, setForm] = useState<FormState>(emptyForm())
   const [formError, setFormError] = useState<string | null>(null)
   const [pageError, setPageError] = useState<string | null>(null)
+
+  // 월 일괄 삭제 — 파괴적 동작이라 확인 단계를 반드시 거친다
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  // 실패 시 다이얼로그가 열린 채 남으므로 에러도 다이얼로그 안에 띄운다
+  // (pageError는 오버레이 뒤에 가려져 보이지 않는다)
+  const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null)
+  // 삭제 완료처럼 오류가 아닌 안내 (pageError는 destructive 색이라 성공에 쓰지 않는다)
+  const [pageNotice, setPageNotice] = useState<string | null>(null)
 
   const [importOpen, setImportOpen] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
@@ -145,6 +155,11 @@ export function TransactionsPage() {
   useEffect(() => {
     if (!loaded) fetchAll().catch((e: Error) => setPageError(e.message))
   }, [fetchAll, loaded])
+
+  // 삭제 안내는 그 조회 조건에 대한 것이므로, 조건이 바뀌면 더는 유효하지 않다
+  useEffect(() => {
+    setPageNotice(null)
+  }, [filters.month, filters.kind, filters.major, filters.category_id, filters.member_id])
 
   // 캘린더 뷰는 항상 특정 월을 기준으로 한다 (월 필터가 비어 있으면 현재 월)
   const calendarMonth = filters.month ?? currentMonth()
@@ -439,6 +454,43 @@ export function TransactionsPage() {
     setImportOpen(true)
   }
 
+  // 월 외에 추가로 걸린 필터의 사람이 읽을 수 있는 요약 (확인 다이얼로그용)
+  const bulkDeleteScope = useMemo(() => {
+    const parts: string[] = []
+    if (filters.kind) parts.push(`구분 ${KIND_LABEL[filters.kind]}`)
+    if (filters.major) parts.push(`대분류 ${filters.major}`)
+    if (filters.category_id) {
+      const c = categories.find((x) => x.id === filters.category_id)
+      if (c) parts.push(`소분류 ${c.minor}`)
+    }
+    if (filters.member_id) {
+      const m = members.find((x) => x.id === filters.member_id)
+      if (m) parts.push(`구성원 ${m.name}`)
+    }
+    return parts
+  }, [filters.kind, filters.major, filters.category_id, filters.member_id, categories, members])
+
+  const openBulkDelete = () => {
+    setBulkDeleteError(null)
+    setBulkDeleteOpen(true)
+  }
+
+  const confirmBulkDelete = async () => {
+    setBulkDeleting(true)
+    setBulkDeleteError(null)
+    setPageNotice(null)
+    try {
+      const deleted = await removeMonth()
+      setBulkDeleteOpen(false)
+      setPageNotice(`${filters.month} 거래 ${deleted}건을 삭제했어요.`)
+    } catch (e) {
+      // 다이얼로그가 열린 채 남으므로 그 안에 표시해야 사용자에게 보인다
+      setBulkDeleteError((e as Error).message)
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* 모바일: 제목/액션 세로 적층 + 액션 줄바꿈 허용 (한 줄 강제 시 375px에서 가로 스크롤) */}
@@ -468,6 +520,16 @@ export function TransactionsPage() {
           <Button variant="outline" onClick={openImport}>
             <FileUp /> 엑셀 업로드
           </Button>
+          {/* 월 미선택(전체 기간)이면 전체 삭제 사고를 막기 위해 비활성 */}
+          <Button
+            variant="outline"
+            className="text-destructive"
+            disabled={!filters.month || items.length === 0}
+            title={filters.month ? undefined : '삭제할 월을 먼저 선택해주세요'}
+            onClick={openBulkDelete}
+          >
+            <Trash2 /> 월 전체 삭제
+          </Button>
           <Button onClick={openCreate}>
             <Plus /> 거래 추가
           </Button>
@@ -475,6 +537,7 @@ export function TransactionsPage() {
       </div>
 
       {pageError && <p className="text-sm text-destructive">{pageError}</p>}
+      {pageNotice && <p className="text-sm text-muted-foreground">{pageNotice}</p>}
 
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1">
@@ -881,8 +944,11 @@ export function TransactionsPage() {
       </Dialog>
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        {/* 본문만 스크롤시키고 헤더/푸터는 고정 — grid 자식이 줄어들 수 있게 min-h-0 필요 */}
         <DialogContent
-          className={importPreview && !importResult ? 'sm:max-w-2xl' : 'sm:max-w-md'}
+          className={`max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] ${
+            importPreview && !importResult ? 'sm:max-w-2xl' : 'sm:max-w-md'
+          }`}
         >
           <DialogHeader>
             <DialogTitle>
@@ -900,6 +966,8 @@ export function TransactionsPage() {
                 : '뱅크샐러드 내보내기 파일의 "가계부 내역"에서 선택한 달만 가져옵니다.'}
             </DialogDescription>
           </DialogHeader>
+          {/* pr-3: 스크롤바가 Root 우측에 겹쳐 그려지므로 콘텐츠와 겹치지 않게 여백 확보 */}
+          <ScrollArea className="min-h-0 pr-3">
           {importResult ? (
             <div className="space-y-3 text-sm">
               <p>
@@ -926,16 +994,15 @@ export function TransactionsPage() {
                   부동산·주식 평가액 {importResult.valuation_count}건을 오늘 날짜로 반영했어요.
                 </p>
               )}
+              {/* 다이얼로그 본문 전체가 스크롤되므로 여기서 다시 스크롤하지 않는다 */}
               {importResult.skipped.length > 0 && (
-                <ScrollArea className="max-h-40 rounded-md border">
-                  <div className="space-y-1 p-2">
-                    {importResult.skipped.map((s) => (
-                      <p key={s.row} className="text-xs text-muted-foreground">
-                        {s.row}행: {s.reason}
-                      </p>
-                    ))}
-                  </div>
-                </ScrollArea>
+                <div className="space-y-1 rounded-md border p-2">
+                  {importResult.skipped.map((s) => (
+                    <p key={s.row} className="text-xs text-muted-foreground">
+                      {s.row}행: {s.reason}
+                    </p>
+                  ))}
+                </div>
               )}
             </div>
           ) : importPreview ? (
@@ -974,8 +1041,8 @@ export function TransactionsPage() {
                   </div>
                 </div>
               )}
-              <ScrollArea className="max-h-[50vh]">
-                <div className="space-y-2 pr-1">
+              {/* 다이얼로그 본문 전체가 스크롤되므로 여기서 다시 스크롤하지 않는다 */}
+              <div className="space-y-2">
                 {importPreview.review.map((r) => {
                   const decision = reviewDecisions[r.row]
                   const pairAuto = isPairAuto(r.row, r.pair_row)
@@ -1062,8 +1129,7 @@ export function TransactionsPage() {
                     </div>
                   )
                 })}
-                </div>
-              </ScrollArea>
+              </div>
               {importError && <p className="text-sm text-destructive">{importError}</p>}
             </div>
           ) : (
@@ -1112,6 +1178,7 @@ export function TransactionsPage() {
               {importError && <p className="text-sm text-destructive">{importError}</p>}
             </div>
           )}
+          </ScrollArea>
           <DialogFooter>
             {importResult ? (
               <Button onClick={() => setImportOpen(false)}>닫기</Button>
@@ -1140,6 +1207,40 @@ export function TransactionsPage() {
                 </Button>
               </>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>월 전체 삭제</DialogTitle>
+            <DialogDescription>
+              <span className="font-medium text-foreground">{filters.month}</span> 거래{' '}
+              <span className="font-medium text-foreground">{items.length}건</span>을 삭제할게요.
+              되돌릴 수 없어요.
+            </DialogDescription>
+          </DialogHeader>
+          {/* 현재 화면 필터에 걸리는 것만 지우므로, 어떤 필터가 걸려 있는지 밝힌다 */}
+          {bulkDeleteScope.length > 0 && (
+            <p className="text-sm text-muted-foreground">
+              적용 중인 필터: {bulkDeleteScope.join(' · ')} — 이 조건에 맞는 거래만 삭제돼요.
+            </p>
+          )}
+          {bulkDeleteError && (
+            <p className="text-sm text-destructive">{bulkDeleteError}</p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkDeleteOpen(false)}>
+              취소
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmBulkDelete}
+              disabled={bulkDeleting}
+            >
+              {bulkDeleting ? '삭제 중…' : `${items.length}건 삭제`}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

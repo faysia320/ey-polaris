@@ -2,7 +2,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app import models, schemas, settings_store
 from app.database import get_db
@@ -95,7 +95,11 @@ def assets(
     member_id: int | None = Query(default=None, description="소유자 필터 — 미지정 시 전체"),
     db: Session = Depends(get_db),
 ):
-    accounts = db.scalars(select(models.Account).order_by(models.Account.id)).all()
+    accounts = db.scalars(
+        select(models.Account)
+        .options(selectinload(models.Account.member))
+        .order_by(models.Account.id)
+    ).all()
     # 구성원 필터 — 카드/총자산/추이는 소유 계정만으로 계산하되,
     # 목표 달성률용 전체 총자산(grand_total)은 항상 전 계정 기준으로 계산한다
     visible = accounts if member_id is None else [a for a in accounts if a.member_id == member_id]
@@ -169,6 +173,8 @@ def assets(
             is_active=a.is_active,
             balance=balance,
             valued_at=valued_at,
+            member_id=a.member_id,
+            member_name=a.member.name,
         )
     grand_total = sum(b.balance for b in balances_by_id.values())
     balances = [balances_by_id[a.id] for a in visible]

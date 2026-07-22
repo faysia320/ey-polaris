@@ -34,6 +34,8 @@ interface TransactionState {
   create: (input: TransactionInput) => Promise<void>
   update: (id: number, input: TransactionInput) => Promise<void>
   remove: (id: number) => Promise<void>
+  /** 현재 조회 필터에 걸리는 해당 월 거래를 일괄 삭제하고 삭제 건수를 반환 */
+  removeMonth: () => Promise<number>
 }
 
 export const useTransactionStore = create<TransactionState>((set, get) => ({
@@ -67,5 +69,15 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
   remove: async (id) => {
     await api.delete(`/transactions/${id}`)
     await get().fetch()
+  },
+  removeMonth: async () => {
+    const filters = get().filters
+    // 월 미선택(전체 기간) 상태에서는 전체 삭제 사고를 막기 위해 호출 자체를 차단
+    if (!filters.month) throw new Error('삭제할 월을 먼저 선택해주세요')
+    const { deleted_count } = await api.delete<{ deleted_count: number }>(
+      `/transactions${toQuery(filters)}`
+    )
+    await get().fetch()
+    return deleted_count
   },
 }))
