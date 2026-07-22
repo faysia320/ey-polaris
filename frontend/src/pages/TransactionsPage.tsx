@@ -98,10 +98,9 @@ const KIND_BADGE_VARIANT = {
   transfer: 'default',
 } as const
 
-/** 엑셀 평가액 반영 시 자산 유형 라벨 */
-const VALUATION_TYPE_LABEL: Record<'real_estate' | 'stock', string> = {
+/** 엑셀 평가액 반영 시 자산 유형 라벨 — 주식은 총합 직접 입력이라 엑셀 반영 대상이 아니다 */
+const VALUATION_TYPE_LABEL: Record<'real_estate', string> = {
   real_estate: '부동산',
-  stock: '주식',
 }
 
 const kindAmountClass = (kind: TransactionKind) =>
@@ -991,7 +990,7 @@ export function TransactionsPage() {
               )}
               {importResult.valuation_count > 0 && (
                 <p className="text-muted-foreground">
-                  부동산·주식 평가액 {importResult.valuation_count}건을 오늘 날짜로 반영했어요.
+                  부동산 평가액 {importResult.valuation_count}건을 오늘 날짜로 반영했어요.
                 </p>
               )}
               {/* 다이얼로그 본문 전체가 스크롤되므로 여기서 다시 스크롤하지 않는다 */}
@@ -1021,7 +1020,7 @@ export function TransactionsPage() {
               {importPreview.valuations.length > 0 && (
                 <div className="space-y-1 rounded-md border p-2">
                   <p className="text-xs font-medium">
-                    반영될 평가액 — 부동산·주식 {importPreview.valuations.length}건 (오늘 날짜)
+                    반영될 평가액 — 부동산 {importPreview.valuations.length}건 (오늘 날짜)
                   </p>
                   <div className="space-y-1">
                     {importPreview.valuations.map((v, i) => (

@@ -23,6 +23,7 @@ import { api } from "@/lib/api";
 import { formatKRW, todayISO } from "@/lib/format";
 import { useAnalyticsStore } from "@/stores/analytics";
 import { useGoalStore } from "@/stores/goals";
+import { useMasterDataStore } from "@/stores/masterData";
 import { useMemberFilterStore } from "@/stores/memberFilter";
 import type { AccountBalance, AccountType, Goal, Valuation } from "@/types";
 
@@ -43,6 +44,9 @@ const HIDDEN_GROUP_TYPES: AccountType[] = ["easy_pay"];
 
 /** 평가액 스냅샷으로 잔액을 관리하는 시세형 계정 유형 */
 const VALUATION_TYPES: AccountType[] = ["stock", "real_estate"];
+
+/** 주식은 개별 종목이 아니라 보유 총합을 직접 입력한다 (엑셀 업로드 반영 대상 아님) */
+const isStock = (type: AccountType) => type === "stock";
 
 export function AssetsPage() {
   const { assets, fetchAssets } = useAnalyticsStore();
@@ -67,6 +71,24 @@ export function AssetsPage() {
   const [valuationValue, setValuationValue] = useState("");
   const [valuationError, setValuationError] = useState<string | null>(null);
   const [valuationHistory, setValuationHistory] = useState<Valuation[]>([]);
+  // 평가액 삭제 확인 — 확정 전까지 대상만 들고 있는다 (평가액 갱신 다이얼로그 위에 겹쳐 뜬다)
+  const [valuationToDelete, setValuationToDelete] = useState<Valuation | null>(
+    null,
+  );
+  const [valuationDeleteError, setValuationDeleteError] = useState<
+    string | null
+  >(null);
+  const [valuationDeleting, setValuationDeleting] = useState(false);
+
+  // 자산 계정 삭제 확인
+  const deleteAccount = useMasterDataStore((s) => s.deleteAccount);
+  const [accountToDelete, setAccountToDelete] = useState<AccountBalance | null>(
+    null,
+  );
+  const [accountDeleteError, setAccountDeleteError] = useState<string | null>(
+    null,
+  );
+  const [accountDeleting, setAccountDeleting] = useState(false);
 
   // 목표 추가/수정 다이얼로그
   const [goalDialogOpen, setGoalDialogOpen] = useState(false);
@@ -143,9 +165,22 @@ export function AssetsPage() {
   const renderAccountCard = (a: AccountBalance) => (
     <Card key={a.id} className={a.is_active ? "" : "opacity-50"}>
       <CardHeader>
-        <CardTitle className="flex items-center justify-between text-base">
-          <span>{a.name}</span>
-          {!a.is_active && <Badge variant="secondary">비활성</Badge>}
+        {/* CardHeader가 grid라 CardTitle(그리드 아이템)의 min-width:auto가 트랙을
+            max-content로 밀어올린다 — min-w-0을 여기에도 줘야 안쪽 truncate가 작동한다 */}
+        <CardTitle className="flex min-w-0 items-center justify-between gap-2 text-base">
+          <span className="min-w-0 truncate">{a.name}</span>
+          <span className="flex shrink-0 items-center gap-1">
+            {!a.is_active && <Badge variant="secondary">비활성</Badge>}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              title={`${a.name} 삭제`}
+              aria-label={`${a.name} 삭제`}
+              onClick={() => openAccountDelete(a)}
+            >
+              <Trash2 className="text-destructive" />
+            </Button>
+          </span>
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -166,26 +201,56 @@ export function AssetsPage() {
             className="mt-3"
             onClick={() => openValuation(a)}
           >
-            평가액 갱신
+            {isStock(a.type) ? "총합 입력" : "평가액 갱신"}
           </Button>
         )}
       </CardContent>
     </Card>
   );
 
-  const deleteValuation = async (valuationId: number) => {
-    if (!valuationTarget) return;
+  const openAccountDelete = (account: AccountBalance) => {
+    setAccountToDelete(account);
+    setAccountDeleteError(null);
+  };
+
+  // 삭제 실패(거래 참조 409 등)는 다이얼로그를 닫지 않고 사유를 그대로 보여준다
+  const confirmAccountDelete = async () => {
+    if (!accountToDelete) return;
+    setAccountDeleting(true);
+    try {
+      await deleteAccount(accountToDelete.id);
+      setAccountToDelete(null);
+      await fetchAssets(memberId);
+    } catch (e) {
+      setAccountDeleteError((e as Error).message);
+    } finally {
+      setAccountDeleting(false);
+    }
+  };
+
+  const openValuationDelete = (valuation: Valuation) => {
+    setValuationToDelete(valuation);
+    setValuationDeleteError(null);
+  };
+
+  const confirmValuationDelete = async () => {
+    if (!valuationTarget || !valuationToDelete) return;
+    setValuationDeleting(true);
     try {
       await api.delete(
-        `/accounts/${valuationTarget.id}/valuations/${valuationId}`,
+        `/accounts/${valuationTarget.id}/valuations/${valuationToDelete.id}`,
       );
       setValuationError(null);
+      setValuationToDelete(null);
       await Promise.all([
         loadValuationHistory(valuationTarget.id),
         fetchAssets(memberId),
       ]);
     } catch (e) {
-      setValuationError((e as Error).message);
+      // 계정 삭제와 동일하게 — 실패 시 확인 다이얼로그를 유지하고 그 안에 사유를 보여준다
+      setValuationDeleteError((e as Error).message);
+    } finally {
+      setValuationDeleting(false);
     }
   };
 
@@ -435,10 +500,16 @@ export function AssetsPage() {
       >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>평가액 갱신 — {valuationTarget?.name}</DialogTitle>
+            <DialogTitle>
+              {valuationTarget && isStock(valuationTarget.type)
+                ? "보유 주식 총합 입력"
+                : "평가액 갱신"}{" "}
+              — {valuationTarget?.name}
+            </DialogTitle>
             <DialogDescription>
-              기준일의 평가액을 기록해요. 같은 날짜에 다시 기록하면 값이
-              갱신돼요.
+              {valuationTarget && isStock(valuationTarget.type)
+                ? "기준일의 보유 주식 평가 총합을 직접 입력해요. 주식은 엑셀 업로드로 갱신되지 않아요."
+                : "기준일의 평가액을 기록해요. 같은 날짜에 다시 기록하면 값이 갱신돼요."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -452,7 +523,11 @@ export function AssetsPage() {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="val-value">평가액 (원)</Label>
+              <Label htmlFor="val-value">
+                {valuationTarget && isStock(valuationTarget.type)
+                  ? "보유 주식 총합 (원)"
+                  : "평가액 (원)"}
+              </Label>
               <Input
                 id="val-value"
                 type="number"
@@ -478,7 +553,9 @@ export function AssetsPage() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            onClick={() => deleteValuation(v.id)}
+                            title={`${v.date} 평가액 삭제`}
+                            aria-label={`${v.date} 평가액 삭제`}
+                            onClick={() => openValuationDelete(v)}
                           >
                             <Trash2 className="text-destructive" />
                           </Button>
@@ -501,6 +578,83 @@ export function AssetsPage() {
               취소
             </Button>
             <Button onClick={submitValuation}>기록</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 평가액 삭제 확인 — 평가액 갱신 다이얼로그 위에 겹쳐 뜬다 */}
+      <Dialog
+        open={valuationToDelete !== null}
+        onOpenChange={(open) => !open && setValuationToDelete(null)}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>평가액 삭제</DialogTitle>
+            <DialogDescription>
+              {valuationToDelete?.date} 기준{" "}
+              {valuationToDelete && formatKRW(valuationToDelete.value)} 기록을
+              삭제할게요. 되돌릴 수 없어요.
+            </DialogDescription>
+          </DialogHeader>
+          {valuationDeleteError && (
+            <p className="text-sm text-destructive">{valuationDeleteError}</p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setValuationToDelete(null)}
+              disabled={valuationDeleting}
+            >
+              취소
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmValuationDelete}
+              disabled={valuationDeleting}
+            >
+              {valuationDeleting ? "삭제 중…" : "삭제"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 자산 계정 삭제 확인 — 평가 이력이 함께 사라지고, 거래가 있으면 백엔드가 409로 막는다 */}
+      <Dialog
+        open={accountToDelete !== null}
+        onOpenChange={(open) => !open && setAccountToDelete(null)}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>자산 계정 삭제</DialogTitle>
+            <DialogDescription>
+              {accountToDelete?.name} 계정을 삭제할게요. 이 계정의 평가 이력도
+              함께 삭제되며 되돌릴 수 없어요.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            <p className="text-muted-foreground">
+              현재 잔액 {accountToDelete && formatKRW(accountToDelete.balance)} —
+              삭제하면 총자산에서 빠져요.
+            </p>
+            {accountDeleteError && (
+              <p className="text-destructive">{accountDeleteError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAccountToDelete(null)}
+              disabled={accountDeleting}
+            >
+              취소
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmAccountDelete}
+              disabled={accountDeleting}
+            >
+              {accountDeleting ? "삭제 중…" : "삭제"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

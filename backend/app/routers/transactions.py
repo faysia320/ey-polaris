@@ -193,8 +193,11 @@ def _effective_valuations(
 ) -> list[excel_import.ParsedValuation]:
     """뱅샐현황 평가액 중 실제로 반영될 항목만 추린다(미리보기·적재 공유).
 
+    주식은 파싱 단계에서 이미 제외되므로(excel_import.VALUATION_ITEM_TYPES) 여기서는
+    부동산만 다룬다.
+
     - 같은 상품명은 합치되, 0원이 비영 평가액을 덮어쓰지 않도록 마지막 비영값을 우선한다.
-    - 동명 계정이 stock/real_estate가 아니면(은행 등) 매칭하지 않는다.
+    - 동명 계정이 real_estate가 아니면(은행·주식 등) 매칭하지 않는다.
     - 동명 계정이 없고 값이 0원이면 신규 계정을 만들지 않으므로 제외한다.
 
     accounts(이름→계정)는 현재 DB 상태이며, 미리보기와 확정이 같은 집합·건수를 보장한다.
@@ -210,8 +213,8 @@ def _effective_valuations(
     for v in deduped.values():
         account = accounts.get(v.product_name)
         if account is not None:
-            if account.type not in ("stock", "real_estate"):
-                continue  # 동명의 비시세형 계정과는 매칭하지 않음
+            if account.type != "real_estate":
+                continue  # 동명의 비부동산 계정(은행·주식 등)과는 매칭하지 않음
         elif v.value == 0:
             continue  # 0원 신규 항목은 생성하지 않음
         effective.append(v)
@@ -456,9 +459,10 @@ def import_transactions(
         )
         transfer_count += 1
 
-    # 자산 평가액 — 뱅샐현황 자산 표의 부동산·주식 평가액을 오늘 날짜로 반영한다(선택 월과 무관).
+    # 자산 평가액 — 뱅샐현황 자산 표의 부동산 평가액을 오늘 날짜로 반영한다(선택 월과 무관).
+    # 주식은 보유 총합을 자산 페이지에서 직접 입력하므로 엑셀 반영 대상이 아니다.
     # 반영 대상은 미리보기와 동일한 정책(_effective_valuations)으로 추린다: 상품명 dedupe,
-    # 0원 신규 미생성, 동명 비시세형 계정 제외. 남은 항목은 매칭 계정에 upsert하거나 신규 생성한다.
+    # 0원 신규 미생성, 동명 비부동산 계정 제외. 남은 항목은 매칭 계정에 upsert하거나 신규 생성한다.
     valuation_date = date.today()
     valuation_count = 0
     for v in _effective_valuations(content, accounts):

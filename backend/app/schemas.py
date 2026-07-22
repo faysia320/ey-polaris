@@ -273,10 +273,13 @@ class ImportReviewRow(BaseModel):
 
 
 class ImportValuationRow(BaseModel):
-    """뱅샐현황 자산 표에서 읽은 부동산·주식 평가액 한 줄 (미리보기 표시용)."""
+    """뱅샐현황 자산 표에서 읽은 부동산 평가액 한 줄 (미리보기 표시용).
+
+    주식은 보유 총합을 자산 페이지에서 직접 입력하므로 엑셀에서 읽지 않는다.
+    """
 
     product_name: str = Field(description="엑셀 상품명 — 같은 이름의 계정과 매칭")
-    account_type: Literal["real_estate", "stock"]
+    account_type: Literal["real_estate"]
     value: int = Field(ge=0, description="KRW 정수(원) 평가액")
 
 
@@ -287,7 +290,7 @@ class ImportPreview(BaseModel):
     review: list[ImportReviewRow]
     skipped: list[ImportSkippedRow]
     valuations: list[ImportValuationRow] = Field(
-        default_factory=list, description="뱅샐현황에서 읽은 부동산·주식 평가액 (오늘 날짜로 반영 예정)"
+        default_factory=list, description="뱅샐현황에서 읽은 부동산 평가액 (오늘 날짜로 반영 예정)"
     )
 
 
@@ -313,5 +316,5 @@ class ImportResult(BaseModel):
     created_categories: list[str] = Field(description="자동 생성된 카테고리 표시명")
     created_accounts: list[str] = Field(description="자동 생성된 자산 계정명")
     valuation_count: int = Field(
-        default=0, description="오늘 날짜로 기록·갱신된 부동산·주식 평가액 수"
+        default=0, description="오늘 날짜로 기록·갱신된 부동산 평가액 수"
     )

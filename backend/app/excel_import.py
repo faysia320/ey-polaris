@@ -52,7 +52,7 @@ class ParsedValuation:
     """뱅샐현황 "재무현황" 자산 표에서 추출한 시세형 자산 평가액 한 줄."""
 
     product_name: str  # 엑셀 상품명 — 자산 계정명과 매칭한다
-    account_type: str  # real_estate | stock
+    account_type: str  # real_estate (주식은 총합을 직접 입력하므로 엑셀에서 읽지 않는다)
     value: int  # KRW 정수(원), 0 이상
 
 
@@ -243,18 +243,21 @@ def guess_account_type(name: str) -> str:
     return "other"
 
 
-# 평가액을 읽는 첫 시트와 자산 분류→계정 유형 매핑
+# 평가액을 읽는 첫 시트와 자산 분류→계정 유형 매핑.
+# "투자성 자산"(주식)은 의도적으로 제외한다 — 주식은 개별 종목이 아니라 보유 총합을
+# 자산 페이지에서 직접 입력하는 방식이므로 엑셀이 덮어써서는 안 된다.
 VALUATION_SHEET = "뱅샐현황"
-VALUATION_ITEM_TYPES = {"부동산": "real_estate", "투자성 자산": "stock"}
+VALUATION_ITEM_TYPES = {"부동산": "real_estate"}
 
 
 def parse_valuations(content: bytes) -> list[ParsedValuation]:
-    """뱅샐현황 시트의 "재무현황" 자산 표에서 부동산·주식 평가액을 추출한다.
+    """뱅샐현황 시트의 "재무현황" 자산 표에서 부동산 평가액을 추출한다.
 
     항목(자산 분류) 셀은 그룹의 첫 행에만 있고 이후 행은 엑셀 병합으로 비어 있으므로
-    마지막 분류를 carry-forward 한다. 부동산→real_estate, 투자성 자산→stock으로 매핑하고,
-    '총자산'/'순자산' 등 집계 행이나 다음 섹션 헤더에서 표를 종료한다. 행 위치는 파일마다
-    다를 수 있어 헤더(항목/상품명/금액)를 탐지해 컬럼을 잡는다.
+    마지막 분류를 carry-forward 한다. 부동산→real_estate로 매핑하고 매핑에 없는 분류
+    (투자성 자산 등)는 건너뛴다. '총자산'/'순자산' 등 집계 행이나 다음 섹션 헤더에서
+    표를 종료한다. 행 위치는 파일마다 다를 수 있어 헤더(항목/상품명/금액)를 탐지해
+    컬럼을 잡는다.
 
     시트가 없거나 자산 표를 찾지 못하면 빈 목록을 반환한다 — 평가 반영은 선택 사항이므로
     가져오기 자체를 막지 않는다. 0원 행도 그대로 반환하며, 신규 생성/갱신 정책은 호출 측이 정한다.

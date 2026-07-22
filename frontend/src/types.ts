@@ -175,11 +175,14 @@ export interface ImportReviewRow {
   suggested: ImportAction
 }
 
-/** 뱅샐현황 자산 표에서 읽은 부동산·주식 평가액 (오늘 날짜로 반영 예정) */
+/**
+ * 뱅샐현황 자산 표에서 읽은 부동산 평가액 (오늘 날짜로 반영 예정).
+ * 주식은 보유 총합을 자산 페이지에서 직접 입력하므로 엑셀에서 읽지 않는다.
+ */
 export interface ImportValuationRow {
   /** 엑셀 상품명 — 같은 이름의 계정과 매칭 */
   product_name: string
-  account_type: 'real_estate' | 'stock'
+  account_type: 'real_estate'
   value: number
 }
 
@@ -211,7 +214,7 @@ export interface ImportResult {
   skipped: ImportSkippedRow[]
   created_categories: string[]
   created_accounts: string[]
-  /** 오늘 날짜로 기록·갱신된 부동산·주식 평가액 수 */
+  /** 오늘 날짜로 기록·갱신된 부동산 평가액 수 */
   valuation_count: number
 }
 
