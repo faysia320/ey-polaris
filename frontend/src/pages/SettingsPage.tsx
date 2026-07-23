@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -284,6 +284,18 @@ function AccountsTab() {
     (a) => LINKABLE_TYPES.includes(a.type) && a.id !== editing?.id,
   )
 
+  // 목록 정렬: 소유자 → 유형(ACCOUNT_TYPES 표시 순) → 이름
+  const sortedAccounts = useMemo(() => {
+    const memberName = (id: number) => members.find((m) => m.id === id)?.name ?? ''
+    const typeOrder = (t: AccountType) => ACCOUNT_TYPES.findIndex((x) => x.value === t)
+    return [...accounts].sort(
+      (a, b) =>
+        memberName(a.member_id).localeCompare(memberName(b.member_id), 'ko') ||
+        typeOrder(a.type) - typeOrder(b.type) ||
+        a.name.localeCompare(b.name, 'ko'),
+    )
+  }, [accounts, members])
+
   const openCreate = () => {
     setEditing(null)
     setName('')
@@ -355,7 +367,7 @@ function AccountsTab() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {accounts.map((a) => (
+            {sortedAccounts.map((a) => (
               <TableRow key={a.id}>
                 <TableCell>{a.name}</TableCell>
                 <TableCell>
