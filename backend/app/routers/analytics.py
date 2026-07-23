@@ -1,8 +1,8 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import case, func, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import case, func, or_, select
+from sqlalchemy.orm import Session, aliased, selectinload
 
 from app import models, schemas, settings_store
 from app.database import get_db
@@ -29,6 +29,77 @@ def _signed_amount():
     )
 
 
+def _income_expense_stats(
+    db: Session, start: date, end: date, member_id: int | None = None
+) -> tuple[int, int, dict[str, int]]:
+    """묶음(이체/환불) 상쇄를 반영한 (수입 합계, 지출 합계, 대분류별 지출 dict).
+
+    대시보드와 AI 리포트가 공유하는 수입/지출 집계 규칙:
+    - 이체 묶음(transfer): 수입·지출 두 다리를 모두 통계에서 제외한다.
+    - 환불 묶음(refund): 환불(수입) 다리는 수입에서 제외하고, 그 금액을 짝 지출
+      다리의 대분류에서 차감해 순지출만 반영한다. 차감은 **지출(결제) 다리의 월**을
+      기준으로 앵커링한다 — 카드 익월 환불처럼 결제·환불 월이 달라도 결제 월에서
+      순지출이 올바르게 상쇄되도록(환불 다리 월을 기준으로 하면 결제 월엔 짝 지출이
+      없어 차감이 유실된다).
+    - link_id가 NULL인 거래는 종전과 동일하게 전액 반영한다.
+    잔액/자산 추이는 원본 income/expense가 이미 각 계정에 ±반영하므로 여기서 다루지 않는다.
+    """
+    T = models.Transaction
+    L = models.TransactionLink
+
+    def in_month(t) -> list:
+        conds = [t.date >= start, t.date < end]
+        if member_id is not None:
+            conds.append(t.member_id == member_id)
+        return conds
+
+    # 수입 — 묶이지 않은 수입만 (이체·환불 수입 다리는 모두 제외)
+    income_total = int(
+        db.scalar(
+            select(func.coalesce(func.sum(T.amount), 0)).where(
+                *in_month(T), T.kind == "income", T.link_id.is_(None)
+            )
+        )
+    )
+
+    # 지출 대분류별 — 이체 묶음 지출 다리만 제외(미묶음 + 환불 묶음 지출은 포함)
+    by_major: dict[str, int] = {}
+    for major, amount in db.execute(
+        select(models.Category.major, func.sum(T.amount))
+        .join(T, T.category_id == models.Category.id)
+        .outerjoin(L, L.id == T.link_id)
+        .where(
+            *in_month(T),
+            T.kind == "expense",
+            or_(T.link_id.is_(None), L.link_type == "refund"),
+        )
+        .group_by(models.Category.major)
+    ).all():
+        by_major[major] = int(amount)
+
+    # 환불 묶음 — 환불(수입) 금액을 짝 지출 다리의 대분류에서 차감해 순지출로 만든다.
+    # 앵커는 지출(결제) 다리의 월 — 위 by_major가 지출 다리를 결제 월에 담으므로
+    # 차감도 같은 월·같은 대분류에 맞춰야 결제·환불 월이 달라도 유실 없이 상쇄된다.
+    income_leg = aliased(T)
+    expense_leg = aliased(T)
+    for major, refunded in db.execute(
+        select(models.Category.major, func.sum(income_leg.amount))
+        .select_from(L)
+        .join(income_leg, (income_leg.link_id == L.id) & (income_leg.kind == "income"))
+        .join(expense_leg, (expense_leg.link_id == L.id) & (expense_leg.kind == "expense"))
+        .join(models.Category, models.Category.id == expense_leg.category_id)
+        .where(L.link_type == "refund", *in_month(expense_leg))
+        .group_by(models.Category.major)
+    ).all():
+        if major in by_major:
+            by_major[major] -= int(refunded)
+
+    # 순지출이 0 이하가 된 대분류는 집계·표시에서 제외 (검증상 환불≤지출이라 음수는 없음)
+    by_major = {m: v for m, v in by_major.items() if v > 0}
+    expense_total = sum(by_major.values())
+    return income_total, expense_total, by_major
+
+
 @router.get("/dashboard", response_model=schemas.DashboardOut)
 def dashboard(
     month: str = Query(pattern=schemas.YEAR_MONTH_PATTERN),
@@ -36,31 +107,10 @@ def dashboard(
     db: Session = Depends(get_db),
 ):
     start, end = _month_range(month)
-    in_month = (models.Transaction.date >= start) & (models.Transaction.date < end)
-    if member_id is not None:
-        # 구성원 필터 — 거래 기반 집계(합계/카테고리/예산 spent)에 일괄 적용
-        in_month = in_month & (models.Transaction.member_id == member_id)
-
-    def month_total(kind: str) -> int:
-        return db.scalar(
-            select(func.coalesce(func.sum(models.Transaction.amount), 0)).where(
-                in_month, models.Transaction.kind == kind
-            )
-        )
-
-    # 도넛 차트용 — 소분류 56종을 그대로 내보내면 과밀하므로 대분류로 집계
-    expense_rows = db.execute(
-        select(
-            models.Category.major,
-            func.sum(models.Transaction.amount).label("amount"),
-        )
-        .join(models.Transaction, models.Transaction.category_id == models.Category.id)
-        .where(in_month, models.Transaction.kind == "expense")
-        .group_by(models.Category.major)
-        .order_by(func.sum(models.Transaction.amount).desc())
-    ).all()
-    # 예산 진행률용 — 예산은 지출 대분류 단위, spent는 대분류 아래 모든 소분류 합산
-    spent_by_major = {row.major: int(row.amount) for row in expense_rows}
+    # 묶음(이체/환불) 상쇄를 반영한 수입/지출/대분류별 지출
+    income_total, expense_total, spent_by_major = _income_expense_stats(
+        db, start, end, member_id
+    )
 
     budget_rows = db.scalars(
         select(models.Budget)
@@ -78,14 +128,17 @@ def dashboard(
 
     return schemas.DashboardOut(
         month=month,
-        income_total=month_total("income"),
-        expense_total=month_total("expense"),
+        income_total=income_total,
+        expense_total=expense_total,
         budget_total=sum(b.amount for b in budgets),
         budget_spent=sum(b.spent for b in budgets),
         budgets=budgets,
+        # 도넛 차트용 — 소분류 56종을 그대로 내보내면 과밀하므로 대분류로 집계(금액 내림차순)
         expense_by_category=[
-            schemas.CategoryAmount(category_name=row.major, amount=row.amount)
-            for row in expense_rows
+            schemas.CategoryAmount(category_name=major, amount=amount)
+            for major, amount in sorted(
+                spent_by_major.items(), key=lambda kv: kv[1], reverse=True
+            )
         ],
     )
 
@@ -266,26 +319,8 @@ def _month_stats(db: Session, month: str) -> dict:
     대시보드(dashboard) 집계와 동일한 규칙(수입/지출 합계, 대분류 지출, 예산 대비 소진)을 모은다.
     """
     start, end = _month_range(month)
-    in_month = (models.Transaction.date >= start) & (models.Transaction.date < end)
-
-    def month_total(kind: str) -> int:
-        return db.scalar(
-            select(func.coalesce(func.sum(models.Transaction.amount), 0)).where(
-                in_month, models.Transaction.kind == kind
-            )
-        )
-
-    expense_rows = db.execute(
-        select(
-            models.Category.major,
-            func.sum(models.Transaction.amount).label("amount"),
-        )
-        .join(models.Transaction, models.Transaction.category_id == models.Category.id)
-        .where(in_month, models.Transaction.kind == "expense")
-        .group_by(models.Category.major)
-        .order_by(func.sum(models.Transaction.amount).desc())
-    ).all()
-    spent_by_major = {row.major: int(row.amount) for row in expense_rows}
+    # 대시보드와 동일한 묶음 상쇄 규칙을 적용해 두 화면의 수치가 일치하도록 한다
+    income_total, expense_total, spent_by_major = _income_expense_stats(db, start, end)
 
     budget_rows = db.scalars(
         select(models.Budget)
@@ -297,8 +332,6 @@ def _month_stats(db: Session, month: str) -> dict:
         for b in budget_rows
     ]
 
-    income_total = month_total("income")
-    expense_total = month_total("expense")
     return {
         "month": month,
         "income_total": income_total,
@@ -308,7 +341,10 @@ def _month_stats(db: Session, month: str) -> dict:
         "budget_spent": sum(b["spent"] for b in budgets),
         "budgets": budgets,
         "expense_by_category": [
-            {"major": row.major, "amount": int(row.amount)} for row in expense_rows
+            {"major": major, "amount": amount}
+            for major, amount in sorted(
+                spent_by_major.items(), key=lambda kv: kv[1], reverse=True
+            )
         ],
     }
 

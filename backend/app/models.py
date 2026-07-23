@@ -87,6 +87,25 @@ class Category(Base):
         return self.major if self.minor == "미분류" else f"{self.major} > {self.minor}"
 
 
+class TransactionLink(Base):
+    """이미 저장된 두 거래(수입 1 + 지출 1)를 사후에 하나로 묶는 연결 그룹.
+
+    원본 거래는 보존하고 link_id로만 연결한다 — 병합/삭제가 아니라 '묶음 표시'다.
+    link_type:
+      transfer — 서로 다른 계정 간 이동. 두 다리 모두 수입/지출 통계에서 제외한다.
+      refund   — 카드 결제(지출) + 환불(수입). 지출에서 환불액을 차감한 순지출만 통계에 반영.
+    잔액/자산 추이는 원본 income/expense가 이미 각 계정에 ±반영하므로 별도 보정하지 않는다.
+    """
+
+    __tablename__ = "transaction_links"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    link_type: Mapped[str] = mapped_column(String(10))  # transfer | refund
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class Transaction(Base):
     """수입/지출/이체 거래. 금액은 KRW 정수(원 단위), 항상 양수이며 kind로 방향을 구분.
 
@@ -111,6 +130,10 @@ class Transaction(Base):
     )
     memo: Mapped[str | None] = mapped_column(String(255), nullable=True)
     source: Mapped[str] = mapped_column(String(10), default="manual")  # manual | import
+    # 사후 묶음(이체/환불) 연결 — NULL이면 묶이지 않은 독립 거래. 그룹 해제 시 SET NULL로 복원
+    link_id: Mapped[int | None] = mapped_column(
+        ForeignKey("transaction_links.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     category: Mapped["Category"] = relationship(back_populates="transactions")
     account: Mapped["Account"] = relationship(
@@ -118,6 +141,7 @@ class Transaction(Base):
     )
     counter_account: Mapped["Account | None"] = relationship(foreign_keys=[counter_account_id])
     member: Mapped["Member | None"] = relationship()
+    link: Mapped["TransactionLink | None"] = relationship()
 
 
 class AssetValuation(Base):

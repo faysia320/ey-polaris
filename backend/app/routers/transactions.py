@@ -2,7 +2,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import TypeAdapter, ValidationError
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app import excel_import, models, schemas
@@ -34,6 +34,8 @@ def _to_out(t: models.Transaction) -> schemas.TransactionOut:
         account_name=t.account.name,
         counter_account_name=t.counter_account.name if t.counter_account else None,
         member_name=t.member.name if t.member else None,
+        link_id=t.link_id,
+        link_type=t.link.link_type if t.link else None,
     )
 
 
@@ -110,6 +112,7 @@ def list_transactions(
             selectinload(models.Transaction.account),
             selectinload(models.Transaction.counter_account),
             selectinload(models.Transaction.member),
+            selectinload(models.Transaction.link),
         )
         .where(*_filter_conditions(month, kind, category_id, major, account_id, member_id))
         .order_by(models.Transaction.date.desc(), models.Transaction.id.desc())
@@ -142,6 +145,33 @@ def delete_transactions_by_month(
     return schemas.BulkDeleteResult(deleted_count=deleted)
 
 
+def _check_link_pair(
+    link_type: str,
+    income_amount: int,
+    income_account_id: int,
+    expense_amount: int,
+    expense_account_id: int,
+) -> None:
+    """묶음 쌍(수입/지출)이 유형별 규칙을 만족하는지 검증한다 (묶기 생성·수정 재검증 공유).
+
+    위반 시 422를 던진다. transfer는 다른 계정·같은 금액, refund는 환불(수입) ≤ 지출.
+    """
+    if link_type == "transfer":
+        if income_account_id == expense_account_id:
+            raise HTTPException(
+                status_code=422, detail="이체 묶음은 출금·입금 계정이 서로 달라야 합니다"
+            )
+        if income_amount != expense_amount:
+            raise HTTPException(
+                status_code=422, detail="이체 묶음은 두 거래의 금액이 같아야 합니다"
+            )
+    else:  # refund
+        if income_amount > expense_amount:
+            raise HTTPException(
+                status_code=422, detail="환불 금액이 지출 금액보다 클 수 없습니다"
+            )
+
+
 @router.post("", response_model=schemas.TransactionOut, status_code=201)
 def create_transaction(payload: schemas.TransactionCreate, db: Session = Depends(get_db)):
     _validate_refs(db, payload)
@@ -158,6 +188,32 @@ def update_transaction(
 ):
     transaction = get_or_404(db, models.Transaction, transaction_id, "거래")
     _validate_refs(db, payload)
+    # 묶인 거래 수정은 묶음 정합성을 깨뜨릴 수 있다(예: 환불 수입을 지출보다 크게, 이체
+    # 금액 불일치, 같은 계정화). 짝 다리와 함께 유형별 규칙을 재검증하고 위반이면 거부한다.
+    # setattr 전에 payload 값으로 검증해 세션을 더럽히지 않는다.
+    if transaction.link_id is not None:
+        partner = db.scalar(
+            select(models.Transaction).where(
+                models.Transaction.link_id == transaction.link_id,
+                models.Transaction.id != transaction.id,
+            )
+        )
+        # 짝이 없으면(반쪽 묶음) 재검증할 대상이 없다 — 삭제/해제 경로가 정리를 담당
+        if partner is not None:
+            link = db.get(models.TransactionLink, transaction.link_id)
+            # 수정 후 상태: 이 거래는 payload 값, 짝은 DB 원본
+            legs = [
+                (payload.kind, payload.amount, payload.account_id),
+                (partner.kind, partner.amount, partner.account_id),
+            ]
+            income = next((leg for leg in legs if leg[0] == "income"), None)
+            expense = next((leg for leg in legs if leg[0] == "expense"), None)
+            if income is None or expense is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="묶인 거래는 수입/지출 구분을 유지해야 합니다. 먼저 묶음을 해제해주세요",
+                )
+            _check_link_pair(link.link_type, income[1], income[2], expense[1], expense[2])
     for key, value in payload.model_dump().items():
         setattr(transaction, key, value)
     commit_or_conflict(db, "거래 저장 중 무결성 오류가 발생했습니다")
@@ -165,9 +221,80 @@ def update_transaction(
     return _to_out(transaction)
 
 
+@router.post("/link", response_model=schemas.TransactionLinkOut, status_code=201)
+def link_transactions(payload: schemas.TransactionLinkCreate, db: Session = Depends(get_db)):
+    """저장된 거래 2건(수입 1 + 지출 1)을 사후에 하나의 묶음으로 연결한다.
+
+    원본 거래는 보존하고 link_id로만 연결한다 (병합/삭제 아님). 통계 상쇄는
+    analytics 집계가 link_type에 따라 처리한다:
+      transfer — 서로 다른 계정·같은 금액. 두 다리 모두 수입/지출 통계에서 제외.
+      refund   — 환불(수입) ≤ 지출. 지출에서 환불액을 뺀 순지출만 통계에 반영.
+    """
+    ids = payload.transaction_ids
+    if len(set(ids)) != 2:
+        raise HTTPException(status_code=422, detail="서로 다른 거래 2건을 선택해주세요")
+    txs = db.scalars(
+        select(models.Transaction).where(models.Transaction.id.in_(ids))
+    ).all()
+    if len(txs) != 2:
+        raise HTTPException(status_code=404, detail="선택한 거래를 찾을 수 없습니다")
+    if any(t.link_id is not None for t in txs):
+        raise HTTPException(
+            status_code=422, detail="이미 다른 묶음에 속한 거래가 포함되어 있습니다"
+        )
+    income = next((t for t in txs if t.kind == "income"), None)
+    expense = next((t for t in txs if t.kind == "expense"), None)
+    if income is None or expense is None:
+        raise HTTPException(
+            status_code=422, detail="수입 1건과 지출 1건을 함께 선택해주세요"
+        )
+
+    _check_link_pair(
+        payload.link_type,
+        income.amount,
+        income.account_id,
+        expense.amount,
+        expense.account_id,
+    )
+
+    link = models.TransactionLink(link_type=payload.link_type)
+    db.add(link)
+    db.flush()
+    income.link_id = link.id
+    expense.link_id = link.id
+    db.commit()
+    return schemas.TransactionLinkOut(
+        id=link.id, link_type=link.link_type, transaction_ids=ids
+    )
+
+
+@router.delete("/link/{link_id}", status_code=204)
+def unlink_transactions(link_id: int, db: Session = Depends(get_db)):
+    """묶음을 해제한다 — 두 거래는 보존되고 link_id만 NULL로 복원된다."""
+    link = get_or_404(db, models.TransactionLink, link_id, "묶음")
+    db.execute(
+        update(models.Transaction)
+        .where(models.Transaction.link_id == link_id)
+        .values(link_id=None)
+    )
+    db.delete(link)
+    db.commit()
+
+
 @router.delete("/{transaction_id}", status_code=204)
 def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
     transaction = get_or_404(db, models.Transaction, transaction_id, "거래")
+    # 묶인 거래를 그냥 지우면 짝 다리가 반쪽 묶음으로 남아(link_id 유지) 통계에서
+    # 조용히 제외되고 링크 행도 고아가 된다. 삭제 전에 소속 묶음을 통째로 해제해
+    # 짝 다리를 독립 거래로 되돌린다(unlink_transactions와 동일한 정리 로직).
+    if transaction.link_id is not None:
+        link_id = transaction.link_id
+        db.execute(
+            update(models.Transaction)
+            .where(models.Transaction.link_id == link_id)
+            .values(link_id=None)
+        )
+        db.execute(delete(models.TransactionLink).where(models.TransactionLink.id == link_id))
     db.delete(transaction)
     db.commit()
 

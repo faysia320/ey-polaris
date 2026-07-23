@@ -16,6 +16,8 @@ export type AccountType =
 /** transfer는 계좌 간 자산 이동 — 수입/지출 통계에 포함되지 않는다 */
 export type TransactionKind = 'income' | 'expense' | 'transfer'
 export type CategoryNature = 'fixed' | 'variable'
+/** 사후 묶음 유형 — transfer(계좌 간 이체) | refund(카드 결제+환불) */
+export type LinkType = 'transfer' | 'refund'
 
 export interface Member {
   id: number
@@ -60,6 +62,10 @@ export interface Transaction {
   account_name: string
   counter_account_name: string | null
   member_name: string | null
+  /** 사후 묶음 그룹 id — 묶이지 않았으면 null */
+  link_id: number | null
+  /** 묶음 유형 — 묶이지 않았으면 null */
+  link_type: LinkType | null
 }
 
 export interface TransactionInput {

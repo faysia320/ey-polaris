@@ -110,6 +110,10 @@ class TransactionUpdate(TransactionCreate):
     pass
 
 
+# 사후 묶음 유형 — transfer(계좌 간 이체) | refund(카드 결제+환불)
+LinkType = Literal["transfer", "refund"]
+
+
 class TransactionOut(TransactionCreate):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -117,6 +121,22 @@ class TransactionOut(TransactionCreate):
     account_name: str
     counter_account_name: str | None = None
     member_name: str | None = None
+    # 사후 묶음 정보 — 묶이지 않았으면 둘 다 None
+    link_id: int | None = None
+    link_type: LinkType | None = None
+
+
+class TransactionLinkCreate(BaseModel):
+    transaction_ids: list[int] = Field(
+        min_length=2, max_length=2, description="묶을 거래 2건 (수입 1 + 지출 1)"
+    )
+    link_type: LinkType
+
+
+class TransactionLinkOut(BaseModel):
+    id: int
+    link_type: LinkType
+    transaction_ids: list[int]
 
 
 # ---------- AssetValuation ----------

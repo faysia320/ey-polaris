@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 import { api } from '@/lib/api'
 import { currentMonth } from '@/lib/format'
-import type { Transaction, TransactionInput, TransactionKind } from '@/types'
+import type { LinkType, Transaction, TransactionInput, TransactionKind } from '@/types'
 
 export interface TransactionFilters {
   month: string | null
@@ -36,6 +36,10 @@ interface TransactionState {
   remove: (id: number) => Promise<void>
   /** 현재 조회 필터에 걸리는 해당 월 거래를 일괄 삭제하고 삭제 건수를 반환 */
   removeMonth: () => Promise<number>
+  /** 거래 2건(수입 1 + 지출 1)을 하나의 묶음으로 연결 */
+  link: (transactionIds: number[], linkType: LinkType) => Promise<void>
+  /** 묶음을 해제 — 두 거래는 보존되고 연결만 끊긴다 */
+  unlink: (linkId: number) => Promise<void>
 }
 
 export const useTransactionStore = create<TransactionState>((set, get) => ({
@@ -79,5 +83,16 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
     )
     await get().fetch()
     return deleted_count
+  },
+  link: async (transactionIds, linkType) => {
+    await api.post('/transactions/link', {
+      transaction_ids: transactionIds,
+      link_type: linkType,
+    })
+    await get().fetch()
+  },
+  unlink: async (linkId) => {
+    await api.delete(`/transactions/link/${linkId}`)
+    await get().fetch()
   },
 }))
