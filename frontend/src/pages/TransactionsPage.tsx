@@ -53,7 +53,7 @@ import {
 import { MemberFilterSelect } from '@/components/members/MemberFilterSelect'
 import { TransactionCalendar } from '@/components/transactions/TransactionCalendar'
 import { api } from '@/lib/api'
-import { addMonths, categoryLabel, currentMonth, formatKRW, KIND_LABEL, todayISO } from '@/lib/format'
+import { addMonths, categoryLabel, currentMonth, formatKRW, formatNumber, KIND_LABEL, todayISO } from '@/lib/format'
 import { touchTarget } from '@/lib/utils'
 import { useMasterDataStore } from '@/stores/masterData'
 import { useMemberFilterStore } from '@/stores/memberFilter'
@@ -92,12 +92,13 @@ const emptyForm = (): FormState => ({
   memo: '',
 })
 
-/** 구분별 배지 색 — 수입/지출/이체를 시각적으로 구별 */
-const KIND_BADGE_VARIANT = {
-  income: 'secondary',
-  expense: 'outline',
-  transfer: 'default',
-} as const
+/** 구분별 배지 색 — 금액 텍스트와 같은 의미색(수입=녹/지출=적/이체=청)의 은은한 틴트.
+ *  다크 전용 테마라 반투명 배경 + 밝은 동일 계열 글자로 다크 배경에서 가독성을 확보한다. */
+const KIND_BADGE_CLASS: Record<TransactionKind, string> = {
+  income: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/25',
+  expense: 'bg-rose-500/15 text-rose-300 border-rose-500/25',
+  transfer: 'bg-sky-500/15 text-sky-300 border-sky-500/25',
+}
 
 /** 엑셀 평가액 반영 시 자산 유형 라벨 — 주식은 총합 직접 입력이라 엑셀 반영 대상이 아니다 */
 const VALUATION_TYPE_LABEL: Record<'real_estate', string> = {
@@ -263,7 +264,7 @@ export function TransactionsPage() {
         accessorKey: 'kind',
         header: '구분',
         cell: ({ row }) => (
-          <Badge variant={KIND_BADGE_VARIANT[row.original.kind]}>
+          <Badge variant="outline" className={KIND_BADGE_CLASS[row.original.kind]}>
             {KIND_LABEL[row.original.kind]}
           </Badge>
         ),
@@ -275,15 +276,16 @@ export function TransactionsPage() {
           <Button
             variant="ghost"
             size="sm"
+            className="w-full justify-end"
             onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           >
             금액 <ArrowUpDown className="size-3" />
           </Button>
         ),
         cell: ({ row }) => (
-          <span className={kindAmountClass(row.original.kind)}>
+          <span className={`block text-right tabular-nums ${kindAmountClass(row.original.kind)}`}>
             {kindAmountSign(row.original.kind)}
-            {formatKRW(row.original.amount)}
+            {formatNumber(row.original.amount)}
           </span>
         ),
       },
@@ -690,7 +692,7 @@ export function TransactionsPage() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex min-w-0 flex-col gap-1">
                         <div className="flex items-center gap-2">
-                          <Badge variant={KIND_BADGE_VARIANT[t.kind]}>{KIND_LABEL[t.kind]}</Badge>
+                          <Badge variant="outline" className={KIND_BADGE_CLASS[t.kind]}>{KIND_LABEL[t.kind]}</Badge>
                           <span className="text-xs tabular-nums text-muted-foreground">
                             {t.date}
                           </span>
@@ -701,7 +703,7 @@ export function TransactionsPage() {
                         className={`shrink-0 font-semibold tabular-nums ${kindAmountClass(t.kind)}`}
                       >
                         {kindAmountSign(t.kind)}
-                        {formatKRW(t.amount)}
+                        {formatNumber(t.amount)}
                       </span>
                     </div>
                     <div className="mt-2 flex items-end justify-between gap-2">
@@ -806,7 +808,7 @@ export function TransactionsPage() {
               {dayTransactions.map((t) => (
                 <div key={t.id} className="flex items-center justify-between gap-2 text-sm">
                   <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-                    <Badge variant={KIND_BADGE_VARIANT[t.kind]}>{KIND_LABEL[t.kind]}</Badge>
+                    <Badge variant="outline" className={KIND_BADGE_CLASS[t.kind]}>{KIND_LABEL[t.kind]}</Badge>
                     <span className="min-w-0 truncate">{t.category_name}</span>
                     <span className="min-w-0 truncate text-xs text-muted-foreground">
                       {t.kind === 'transfer' && t.counter_account_name
@@ -820,7 +822,7 @@ export function TransactionsPage() {
                   <div className="flex shrink-0 items-center gap-2">
                     <span className={kindAmountClass(t.kind)}>
                       {kindAmountSign(t.kind)}
-                      {formatKRW(t.amount)}
+                      {formatNumber(t.amount)}
                     </span>
                     <Button
                       variant="ghost"
