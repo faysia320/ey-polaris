@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { api } from "@/lib/api";
 import { formatKRW, todayISO } from "@/lib/format";
+import { touchTarget } from "@/lib/utils";
 import { useAnalyticsStore } from "@/stores/analytics";
 import { useGoalStore } from "@/stores/goals";
 import { useMasterDataStore } from "@/stores/masterData";
@@ -188,12 +189,11 @@ export function AssetsPage() {
           <span className="flex shrink-0 items-center gap-1">
             {!a.is_active && <Badge variant="secondary">비활성</Badge>}
             {/* 시각적 크기는 앱 전역 icon-sm(28px) 관례를 따르되, 터치 히트 영역만
-                의사요소로 44px까지 넓힌다 (28 + inset 8*2). 평가 이력의 삭제 버튼은
-                행 간격이 좁아 같은 처리를 하면 이웃 행을 잘못 누르므로 제외했다 */}
+                의사요소로 44px까지 넓힌다 (touchTarget = 28 + inset 8*2) */}
             <Button
               variant="ghost"
               size="icon-sm"
-              className="relative after:absolute after:-inset-2 after:content-['']"
+              className={touchTarget}
               title={`${a.name} 삭제`}
               aria-label={`${a.name} 삭제`}
               onClick={() => openAccountDelete(a)}
@@ -384,14 +384,16 @@ export function AssetsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <Target className="size-4 text-yellow-300" /> 목표 달성 현황
+          <CardTitle className="flex flex-wrap items-center justify-between gap-2">
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <span className="flex items-center gap-2">
+                <Target className="size-4 text-yellow-300" /> 목표 달성 현황
+              </span>
               <span className="text-xs font-normal text-muted-foreground">
                 부부 공동 목표 — 전체 자산 기준
               </span>
             </span>
-            <Button size="sm" onClick={openGoalCreate}>
+            <Button size="sm" className="shrink-0" onClick={openGoalCreate}>
               <Plus /> 목표 추가
             </Button>
           </CardTitle>
@@ -412,16 +414,16 @@ export function AssetsPage() {
             const rate = grandTotal / g.target_amount;
             return (
               <div key={g.id}>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-2">
-                    {g.name}
+                <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-sm">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate">{g.name}</span>
                     {g.target_date && (
-                      <span className="text-xs text-muted-foreground">
+                      <span className="shrink-0 text-xs text-muted-foreground">
                         ~{g.target_date}
                       </span>
                     )}
                   </span>
-                  <span className="flex items-center gap-1">
+                  <span className="flex shrink-0 items-center gap-2">
                     <span className="text-muted-foreground">
                       {formatKRW(grandTotal)} / {formatKRW(g.target_amount)} (
                       {Math.round(rate * 100)}%)
@@ -429,6 +431,8 @@ export function AssetsPage() {
                     <Button
                       variant="ghost"
                       size="icon-sm"
+                      className={touchTarget}
+                      aria-label="목표 수정"
                       onClick={() => openGoalEdit(g)}
                     >
                       <Pencil />
@@ -436,6 +440,8 @@ export function AssetsPage() {
                     <Button
                       variant="ghost"
                       size="icon-sm"
+                      className={touchTarget}
+                      aria-label="목표 삭제"
                       onClick={() =>
                         removeGoal(g.id)
                           .then(() => setGoalListError(null))
@@ -576,18 +582,19 @@ export function AssetsPage() {
               <div className="space-y-1">
                 <Label>평가 이력</Label>
                 <ScrollArea className="max-h-40 rounded-md border">
-                  <div className="space-y-1 p-2">
+                  <div className="space-y-1.5 p-2">
                     {valuationHistory.map((v) => (
                       <div
                         key={v.id}
-                        className="flex items-center justify-between text-sm"
+                        className="flex items-center justify-between gap-2 text-sm"
                       >
                         <span className="text-muted-foreground">{v.date}</span>
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-2">
                           {formatKRW(v.value)}
                           <Button
                             variant="ghost"
                             size="icon-sm"
+                            className={touchTarget}
                             title={`${v.date} 평가액 삭제`}
                             aria-label={`${v.date} 평가액 삭제`}
                             onClick={() =>

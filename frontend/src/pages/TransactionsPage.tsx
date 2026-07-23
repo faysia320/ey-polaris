@@ -54,6 +54,7 @@ import { MemberFilterSelect } from '@/components/members/MemberFilterSelect'
 import { TransactionCalendar } from '@/components/transactions/TransactionCalendar'
 import { api } from '@/lib/api'
 import { addMonths, categoryLabel, currentMonth, formatKRW, KIND_LABEL, todayISO } from '@/lib/format'
+import { touchTarget } from '@/lib/utils'
 import { useMasterDataStore } from '@/stores/masterData'
 import { useMemberFilterStore } from '@/stores/memberFilter'
 import { useTransactionStore } from '@/stores/transactions'
@@ -630,7 +631,8 @@ export function TransactionsPage() {
 
       {view === 'table' ? (
         <>
-          <div className="rounded-lg border">
+          {/* 데스크톱(sm+): 표 / 모바일(sm 미만): 카드 목록 — 같은 정렬·페이지네이션 데이터 재사용 */}
+          <div className="hidden rounded-lg border sm:block">
             <Table>
               <TableHeader>
                 {table.getHeaderGroups().map((hg) => (
@@ -668,6 +670,75 @@ export function TransactionsPage() {
                 )}
               </TableBody>
             </Table>
+          </div>
+
+          {/* 모바일(sm 미만) 전용 카드 목록 — 표와 동일한 행 데이터(정렬·페이지네이션 반영)를 쓴다 */}
+          <div className="space-y-2 sm:hidden">
+            {table.getRowModel().rows.length === 0 ? (
+              <p className="rounded-lg border py-10 text-center text-sm text-muted-foreground">
+                조건에 맞는 거래가 없습니다.
+              </p>
+            ) : (
+              table.getRowModel().rows.map((row) => {
+                const t = row.original
+                const account =
+                  t.kind === 'transfer' && t.counter_account_name
+                    ? `${t.account_name} → ${t.counter_account_name}`
+                    : t.account_name
+                return (
+                  <div key={row.id} className="rounded-lg border p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex min-w-0 flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant={KIND_BADGE_VARIANT[t.kind]}>{KIND_LABEL[t.kind]}</Badge>
+                          <span className="text-xs tabular-nums text-muted-foreground">
+                            {t.date}
+                          </span>
+                        </div>
+                        <span className="truncate font-medium">{t.category_name}</span>
+                      </div>
+                      <span
+                        className={`shrink-0 font-semibold tabular-nums ${kindAmountClass(t.kind)}`}
+                      >
+                        {kindAmountSign(t.kind)}
+                        {formatKRW(t.amount)}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-end justify-between gap-2">
+                      <div className="flex min-w-0 flex-col text-xs text-muted-foreground">
+                        <span className="truncate">
+                          {account}
+                          {t.member_name ? ` · ${t.member_name}` : ''}
+                        </span>
+                        {t.memo && <span className="truncate">{t.memo}</span>}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className={touchTarget}
+                          aria-label="거래 수정"
+                          onClick={() => openEdit(t)}
+                        >
+                          <Pencil />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className={touchTarget}
+                          aria-label="거래 삭제"
+                          onClick={() =>
+                            remove(t.id).catch((e: Error) => setPageError(e.message))
+                          }
+                        >
+                          <Trash2 className="text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-2">
@@ -733,28 +804,38 @@ export function TransactionsPage() {
                 <p className="text-sm text-muted-foreground">이 날의 거래가 없습니다.</p>
               )}
               {dayTransactions.map((t) => (
-                <div key={t.id} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2">
+                <div key={t.id} className="flex items-center justify-between gap-2 text-sm">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
                     <Badge variant={KIND_BADGE_VARIANT[t.kind]}>{KIND_LABEL[t.kind]}</Badge>
-                    <span>{t.category_name}</span>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="min-w-0 truncate">{t.category_name}</span>
+                    <span className="min-w-0 truncate text-xs text-muted-foreground">
                       {t.kind === 'transfer' && t.counter_account_name
                         ? `${t.account_name} → ${t.counter_account_name}`
                         : t.account_name}
                     </span>
-                    {t.memo && <span className="text-xs text-muted-foreground">{t.memo}</span>}
+                    {t.memo && (
+                      <span className="min-w-0 truncate text-xs text-muted-foreground">{t.memo}</span>
+                    )}
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex shrink-0 items-center gap-2">
                     <span className={kindAmountClass(t.kind)}>
                       {kindAmountSign(t.kind)}
                       {formatKRW(t.amount)}
                     </span>
-                    <Button variant="ghost" size="icon-sm" onClick={() => openEdit(t)}>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className={touchTarget}
+                      aria-label="거래 수정"
+                      onClick={() => openEdit(t)}
+                    >
                       <Pencil />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon-sm"
+                      className={touchTarget}
+                      aria-label="거래 삭제"
                       onClick={() => remove(t.id).catch((e: Error) => setPageError(e.message))}
                     >
                       <Trash2 className="text-destructive" />
@@ -768,13 +849,17 @@ export function TransactionsPage() {
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        {/* 필드가 많아 짧은 뷰포트에서 세로로 넘칠 수 있으므로, import 다이얼로그와 동일하게
+            헤더/푸터는 고정하고 본문만 스크롤시킨다 (grid 자식이 줄어들 수 있게 min-h-0 필요) */}
+        <DialogContent className="sm:max-w-md max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto]">
           <DialogHeader>
             <DialogTitle>{editing ? '거래 수정' : '거래 추가'}</DialogTitle>
             <DialogDescription>
               {editing ? '거래 내용을 수정합니다.' : '새 지출/수입/이체 거래를 기록합니다.'}
             </DialogDescription>
           </DialogHeader>
+          {/* pr-3: 스크롤바가 콘텐츠와 겹치지 않게 여백 확보 */}
+          <ScrollArea className="min-h-0 pr-3">
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
@@ -933,6 +1018,7 @@ export function TransactionsPage() {
             </div>
             {formError && <p className="text-sm text-destructive">{formError}</p>}
           </div>
+          </ScrollArea>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               취소

@@ -21,6 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { addMonths, formatKRW, formatNumber } from '@/lib/format'
+import { touchTarget } from '@/lib/utils'
 import { useBudgetStore } from '@/stores/budgets'
 import { useMasterDataStore } from '@/stores/masterData'
 
@@ -208,7 +209,7 @@ export function BudgetsPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex justify-end gap-1">
+                    <div className="flex justify-end gap-2">
                       <Button
                         size="sm"
                         variant="secondary"
@@ -221,6 +222,8 @@ export function BudgetsPage() {
                         <Button
                           size="icon-sm"
                           variant="ghost"
+                          className={touchTarget}
+                          aria-label={`${major} 예산 삭제`}
                           onClick={() =>
                             remove(budget.id).catch((e: Error) => setError(e.message))
                           }

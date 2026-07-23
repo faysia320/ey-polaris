@@ -90,12 +90,18 @@ export function TransactionCalendar({
                 {day}
               </span>
               {totals && totals.income > 0 && (
-                <span className="text-[10px] leading-tight text-emerald-400">
+                <span
+                  className="w-full truncate text-[10px] leading-tight text-emerald-400"
+                  title={`+${formatKRW(totals.income)}`}
+                >
                   +{formatKRW(totals.income)}
                 </span>
               )}
               {totals && totals.expense > 0 && (
-                <span className="text-[10px] leading-tight text-rose-400">
+                <span
+                  className="w-full truncate text-[10px] leading-tight text-rose-400"
+                  title={`-${formatKRW(totals.expense)}`}
+                >
                   -{formatKRW(totals.expense)}
                 </span>
               )}

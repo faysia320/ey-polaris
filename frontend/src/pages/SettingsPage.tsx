@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatKRW, KIND_LABEL } from '@/lib/format'
+import { touchTarget } from '@/lib/utils'
 import { useAISettingsStore } from '@/stores/aiSettings'
 import { useMasterDataStore } from '@/stores/masterData'
 import type { Account, AccountType, Category, CategoryNature, Member, TransactionKind } from '@/types'
@@ -127,12 +128,12 @@ function CategoriesTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between">
-        <p className="text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="min-w-0 text-sm text-muted-foreground">
           고정 지출은 <Badge variant="outline">정기 궤도</Badge>, 변동 지출은{' '}
           <Badge variant="outline">유성우</Badge>로 표시돼요.
         </p>
-        <Button size="sm" onClick={openCreate}>
+        <Button size="sm" className="shrink-0" onClick={openCreate}>
           <Plus /> 카테고리 추가
         </Button>
       </div>
@@ -597,14 +598,16 @@ function MembersTab() {
 function RowActions({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => Promise<void> }) {
   const [error, setError] = useState<string | null>(null)
   return (
-    <div className="flex items-center justify-end gap-1">
+    <div className="flex items-center justify-end gap-2">
       {error && <span className="max-w-48 truncate text-xs text-destructive" title={error}>{error}</span>}
-      <Button variant="ghost" size="icon-sm" onClick={onEdit}>
+      <Button variant="ghost" size="icon-sm" className={touchTarget} aria-label="수정" onClick={onEdit}>
         <Pencil />
       </Button>
       <Button
         variant="ghost"
         size="icon-sm"
+        className={touchTarget}
+        aria-label="삭제"
         onClick={() => onDelete().catch((e: Error) => setError(e.message))}
       >
         <Trash2 className="text-destructive" />
