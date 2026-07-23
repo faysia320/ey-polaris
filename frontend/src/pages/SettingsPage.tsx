@@ -39,10 +39,13 @@ const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
   { value: 'cash', label: '현금' },
   { value: 'card', label: '카드' },
   { value: 'easy_pay', label: '간편결제' },
+  { value: 'e_money', label: '전자금융자산' },
   { value: 'investment', label: '투자' },
   { value: 'stock', label: '주식' },
   { value: 'real_estate', label: '부동산' },
+  { value: 'deposit', label: '보증금' },
   { value: 'other', label: '기타' },
+  { value: 'loan', label: '대출' },
 ]
 
 /** 간편결제 계정이 연결할 수 있는 실물 자산 유형 — 백엔드 LINKABLE_TYPES와 일치 */

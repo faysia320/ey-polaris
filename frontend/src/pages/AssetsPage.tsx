@@ -28,15 +28,19 @@ import { useMasterDataStore } from "@/stores/masterData";
 import { useMemberFilterStore } from "@/stores/memberFilter";
 import type { AccountBalance, AccountType, Goal, Valuation } from "@/types";
 
+// 그룹 표시 순서 = 이 맵의 키 순서. 대출(부채)은 맨 끝에 두어 자산 그룹 아래에 노출한다.
 const ACCOUNT_TYPE_LABEL: Record<AccountType, string> = {
   bank: "은행",
   cash: "현금",
   card: "카드",
   easy_pay: "간편결제",
+  e_money: "전자금융자산",
   investment: "투자",
   stock: "주식",
   real_estate: "부동산",
+  deposit: "보증금",
   other: "기타",
+  loan: "대출",
 };
 
 // 간편결제 계정은 패스스루로 잔액이 연결 카드/은행에 귀속(잔액 0으로 수렴)되므로

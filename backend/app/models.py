@@ -39,7 +39,9 @@ class Account(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100), unique=True)
-    # bank | cash | card | easy_pay | investment | stock | real_estate | other
+    # bank | cash | card | easy_pay | e_money | investment | stock | real_estate | deposit | loan | other
+    # e_money(전자금융자산: 네이버페이·상품권 등 선불 충전형, 자체 잔액 보유)
+    # deposit(보증금: 전세·임차 보증금 등 고정 금액 자산) | loan(대출: 부채 — 음수 잔액으로 총자산 차감)
     type: Mapped[str] = mapped_column(String(20))
     opening_balance: Mapped[int] = mapped_column(BigInteger, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

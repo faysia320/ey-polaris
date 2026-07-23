@@ -3,9 +3,15 @@ export type AccountType =
   | 'cash'
   | 'card'
   | 'easy_pay'
+  /** 전자금융자산 — 네이버페이·온라인상품권 등 선불 충전형(자체 잔액 보유, easy_pay와 달리 패스스루 아님) */
+  | 'e_money'
   | 'investment'
   | 'stock'
   | 'real_estate'
+  /** 보증금 — 전세·임차 보증금 등 시세 변동 없는 고정 금액 자산 */
+  | 'deposit'
+  /** 대출 — 부채. 음수 잔액으로 두면 총자산에서 자동 차감(순자산) */
+  | 'loan'
   | 'other'
 /** transfer는 계좌 간 자산 이동 — 수입/지출 통계에 포함되지 않는다 */
 export type TransactionKind = 'income' | 'expense' | 'transfer'

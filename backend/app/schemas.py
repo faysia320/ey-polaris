@@ -24,7 +24,17 @@ class MemberOut(MemberCreate):
 
 # ---------- Account ----------
 AccountType = Literal[
-    "bank", "cash", "card", "easy_pay", "investment", "stock", "real_estate", "other"
+    "bank",
+    "cash",
+    "card",
+    "easy_pay",
+    "e_money",
+    "investment",
+    "stock",
+    "real_estate",
+    "deposit",
+    "loan",
+    "other",
 ]
 
 
