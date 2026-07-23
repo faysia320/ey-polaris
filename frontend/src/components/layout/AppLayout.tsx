@@ -47,8 +47,8 @@ export function AppLayout() {
         <p className="px-5 py-4 text-xs text-muted-foreground">🌌 v0.1 — 함께 별을 향해</p>
       </aside>
 
-      {/* 모바일 전용 하단 내비게이션 */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-sidebar-border bg-sidebar text-sidebar-foreground md:hidden">
+      {/* 모바일 전용 상단 내비게이션 */}
+      <nav className="fixed inset-x-0 top-0 z-40 flex border-b border-sidebar-border bg-sidebar text-sidebar-foreground md:hidden">
         {menu.map((item) => (
           <NavLink
             key={item.to}
@@ -71,7 +71,7 @@ export function AppLayout() {
 
       {/* min-w-0: flex item의 자동 최소 폭(min-width:auto) 해제 — 없으면 ECharts canvas의
           인라인 px 폭이 min-content로 전파되어 뷰포트 축소 시 가로 스크롤 데드락이 생긴다 */}
-      <main className="min-w-0 flex-1 p-4 pb-20 md:ml-60 md:p-8">
+      <main className="min-w-0 flex-1 p-4 pt-20 md:ml-60 md:p-8 md:pt-8">
         <Outlet />
       </main>
     </div>
