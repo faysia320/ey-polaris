@@ -588,6 +588,8 @@ export function TransactionsPage() {
       const body = new FormData()
       body.append('file', importFile)
       body.append('month', importMonth)
+      // 미리보기도 계정 매칭을 업로드 구성원으로 스코프한다 — 확정 결과와 평가액 건수 파리티 유지
+      body.append('member_id', importMemberId)
       const preview = await api.upload<ImportPreview>('/transactions/import/preview', body)
       if (
         preview.review.length === 0 &&
@@ -1873,7 +1875,7 @@ export function TransactionsPage() {
             (() => {
               const { expense, income } = bundleLegs(viewTx)
               return (
-                <div className="space-y-3 text-sm">
+                <div className="min-w-0 space-y-3 text-sm">
                   {/* 지출 다리 */}
                   <div className="space-y-1 rounded-md border p-2 text-xs">
                     <div className="flex items-center justify-between gap-2">
