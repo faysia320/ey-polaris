@@ -338,3 +338,73 @@ def parse_valuations(content: bytes) -> list[ParsedValuation]:
         return result
     finally:
         workbook.close()
+
+
+# 부채 표는 자산 표와 같은 "뱅샐현황" "재무현황"에 나란히 있다(자산=항목/상품명/금액 좌측,
+# 부채=같은 헤더가 우측에 한 번 더). 부채 측 모든 항목(장기대출·마이너스통장 등)은 대출(loan)로
+# 반영한다 — 값은 양수로 읽고, 잔액 반영 단계에서 음수화해 총자산에서 차감한다.
+LIABILITY_ACCOUNT_TYPE = "loan"
+
+
+def parse_liabilities(content: bytes) -> list[ParsedValuation]:
+    """뱅샐현황 "재무현황" 부채 표에서 대출 잔액을 추출한다.
+
+    부채 표는 자산 표 우측에 같은 헤더(항목/상품명/금액)로 한 번 더 나타난다. 자산 트리오
+    다음(오른쪽)의 두 번째 항목/상품명/금액 컬럼을 잡는다. 항목 셀은 자산과 동일하게 병합되어
+    비어 있으므로 carry-forward 한다. '총부채'/'순부채' 집계 행이나 다음 섹션 헤더에서 종료한다.
+    account_type은 모두 loan, value는 양수(대출 원금). 시트/부채 표가 없으면 빈 목록을 반환한다.
+    """
+    try:
+        workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
+    except Exception:  # 손상/비xlsx 등 — 대출 반영은 선택 사항이므로 조용히 건너뛴다
+        return []
+
+    try:
+        if VALUATION_SHEET not in workbook.sheetnames:
+            return []
+        sheet = workbook[VALUATION_SHEET]
+        rows = sheet.iter_rows(values_only=True)
+
+        # 자산 트리오를 먼저 잡고, 그 오른쪽의 부채 트리오(두 번째 항목/상품명/금액)를 찾는다
+        item_col = product_col = amount_col = None
+        for values in rows:
+            cleaned = [_clean(v) for v in values]
+            if cleaned.count("항목") < 2 or cleaned.count("금액") < 2:
+                continue
+            try:
+                asset_amount = cleaned.index("금액", cleaned.index("항목") + 1)
+                item_col = cleaned.index("항목", asset_amount + 1)
+                product_col = cleaned.index("상품명", item_col + 1)
+                amount_col = cleaned.index("금액", product_col + 1)
+            except ValueError:
+                item_col = None
+                continue
+            break
+        if item_col is None:
+            return []
+
+        result: list[ParsedValuation] = []
+        current_item = ""
+        for values in rows:
+            raw_item = _clean(values[item_col]) if item_col < len(values) else ""
+            if raw_item in ("총부채", "순부채"):
+                break  # 부채 표 끝
+            if raw_item[:1].isdigit() and "." in raw_item[:3]:
+                break  # 다음 섹션 헤더
+            if raw_item:
+                current_item = raw_item
+            product = _clean(values[product_col]) if product_col < len(values) else ""
+            amount = values[amount_col] if amount_col < len(values) else None
+            if not product or not isinstance(amount, (int, float)):
+                continue
+            value = int(amount)
+            if value < 0:
+                continue
+            result.append(
+                ParsedValuation(
+                    product_name=product, account_type=LIABILITY_ACCOUNT_TYPE, value=value
+                )
+            )
+        return result
+    finally:
+        workbook.close()

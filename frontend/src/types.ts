@@ -216,6 +216,14 @@ export interface ImportValuationRow {
   value: number
 }
 
+/** 뱅샐현황 부채 표에서 읽은 대출 잔액 (오늘 날짜로 반영 예정). value는 대출 원금(양수). */
+export interface ImportLiabilityRow {
+  /** 엑셀 상품명 — 같은 이름의 loan 계정과 매칭 */
+  product_name: string
+  /** 대출 원금(양수) — 반영 시 음수 평가액으로 총자산에서 차감 */
+  value: number
+}
+
 export interface ImportPreview {
   month: string
   month_rows: number
@@ -224,6 +232,7 @@ export interface ImportPreview {
   review: ImportReviewRow[]
   skipped: ImportSkippedRow[]
   valuations: ImportValuationRow[]
+  liabilities: ImportLiabilityRow[]
 }
 
 export interface ImportDecision {
@@ -246,6 +255,8 @@ export interface ImportResult {
   created_accounts: string[]
   /** 오늘 날짜로 기록·갱신된 부동산 평가액 수 */
   valuation_count: number
+  /** 오늘 날짜로 기록·갱신된 대출 잔액(음수 평가액) 수 */
+  loan_count: number
 }
 
 export interface AIReport {

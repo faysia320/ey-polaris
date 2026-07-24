@@ -376,6 +376,37 @@ def _effective_valuations(
     return effective
 
 
+def _effective_liabilities(
+    content: bytes, accounts: dict[str, models.Account]
+) -> list[excel_import.ParsedValuation]:
+    """뱅샐현황 부채 표의 대출 중 실제로 반영될 항목만 추린다(미리보기·적재 공유).
+
+    자산 평가와 같은 정책이되 대상 유형은 loan이다. value는 양수(대출 원금)로 유지하며
+    음수화(총자산 차감)는 적재 단계에서 수행한다.
+
+    - 같은 상품명은 합치되, 0원이 비영 대출액을 덮어쓰지 않도록 마지막 비영값을 우선한다.
+    - 동명 계정이 loan이 아니면(은행·주식 등) 매칭하지 않는다.
+    - 동명 계정이 없고 값이 0원이면 신규 계정을 만들지 않으므로 제외한다.
+    """
+    deduped: dict[str, excel_import.ParsedValuation] = {}
+    for v in excel_import.parse_liabilities(content):
+        prev = deduped.get(v.product_name)
+        if prev is not None and v.value == 0 and prev.value != 0:
+            continue
+        deduped[v.product_name] = v
+
+    effective: list[excel_import.ParsedValuation] = []
+    for v in deduped.values():
+        account = accounts.get(v.product_name)
+        if account is not None:
+            if account.type != "loan":
+                continue  # 동명의 비대출 계정과는 매칭하지 않음
+        elif v.value == 0:
+            continue  # 0원 신규 항목은 생성하지 않음
+        effective.append(v)
+    return effective
+
+
 @router.post("/import/preview", response_model=schemas.ImportPreview)
 def preview_import(
     file: UploadFile = File(description="뱅크샐러드 내보내기 .xlsx 파일"),
@@ -420,6 +451,10 @@ def preview_import(
                 product_name=v.product_name, account_type=v.account_type, value=v.value
             )
             for v in _effective_valuations(content, accounts)
+        ],
+        liabilities=[
+            schemas.ImportLiabilityRow(product_name=v.product_name, value=v.value)
+            for v in _effective_liabilities(content, accounts)
         ],
     )
 
@@ -651,6 +686,41 @@ def import_transactions(
             )
         valuation_count += 1
 
+    # 대출 잔액 — 뱅샐현황 부채 표의 대출을 오늘 날짜 평가액으로 반영한다(선택 월과 무관).
+    # 대출은 부채이므로 value를 음수(-대출원금)로 기록해 총자산에서 차감한다. 계정 없으면
+    # loan 유형으로 생성하고, 동명 비대출 계정은 _effective_liabilities에서 이미 제외된다.
+    loan_count = 0
+    for v in _effective_liabilities(content, accounts):
+        account = accounts.get(v.product_name)
+        if account is None:
+            account = models.Account(
+                name=v.product_name,
+                type=v.account_type,  # loan
+                opening_balance=0,
+                is_active=True,
+                member_id=member_id,
+            )
+            db.add(account)
+            db.flush()
+            accounts[v.product_name] = account
+            created_accounts.append(account.name)
+        signed_value = -v.value  # 부채 — 음수 평가액으로 총자산 차감
+        existing = db.scalar(
+            select(models.AssetValuation).where(
+                models.AssetValuation.account_id == account.id,
+                models.AssetValuation.date == valuation_date,
+            )
+        )
+        if existing:
+            existing.value = signed_value
+        else:
+            db.add(
+                models.AssetValuation(
+                    account_id=account.id, date=valuation_date, value=signed_value
+                )
+            )
+        loan_count += 1
+
     commit_or_conflict(db, "가져오기 저장 중 무결성 오류가 발생했습니다")
     return schemas.ImportResult(
         month=month,
@@ -662,4 +732,5 @@ def import_transactions(
         created_categories=created_categories,
         created_accounts=created_accounts,
         valuation_count=valuation_count,
+        loan_count=loan_count,
     )

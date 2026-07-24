@@ -167,7 +167,7 @@ class AssetValuation(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
     date: Mapped[date_type] = mapped_column(Date, index=True)
-    value: Mapped[int] = mapped_column(BigInteger)  # KRW 정수(원), 0 이상
+    value: Mapped[int] = mapped_column(BigInteger)  # KRW 정수(원). 대출(loan) 계정은 음수(-대출원금)로 기록
 
     account: Mapped["Account"] = relationship()
 

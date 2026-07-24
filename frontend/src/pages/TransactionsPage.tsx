@@ -589,7 +589,11 @@ export function TransactionsPage() {
       body.append('file', importFile)
       body.append('month', importMonth)
       const preview = await api.upload<ImportPreview>('/transactions/import/preview', body)
-      if (preview.review.length === 0 && preview.valuations.length === 0) {
+      if (
+        preview.review.length === 0 &&
+        preview.valuations.length === 0 &&
+        preview.liabilities.length === 0
+      ) {
         await commitImport(preview)
       } else {
         // 기본 제안으로 결정 초기화 후 검토 단계 진입
@@ -1446,6 +1450,11 @@ export function TransactionsPage() {
                   부동산 평가액 {importResult.valuation_count}건을 오늘 날짜로 반영했어요.
                 </p>
               )}
+              {importResult.loan_count > 0 && (
+                <p className="text-muted-foreground">
+                  대출 잔액 {importResult.loan_count}건을 오늘 날짜로 반영했어요.
+                </p>
+              )}
               {/* 다이얼로그 본문 전체가 스크롤되므로 여기서 다시 스크롤하지 않는다 */}
               {importResult.skipped.length > 0 && (
                 <div className="space-y-1 rounded-md border p-2">
@@ -1488,6 +1497,29 @@ export function TransactionsPage() {
                           <span className="truncate">{v.product_name}</span>
                         </span>
                         <span className="shrink-0 tabular-nums">{formatKRW(v.value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {importPreview.liabilities.length > 0 && (
+                <div className="space-y-1 rounded-md border p-2">
+                  <p className="text-xs font-medium">
+                    반영될 대출 잔액 — {importPreview.liabilities.length}건 (오늘 날짜, 총자산 차감)
+                  </p>
+                  <div className="space-y-1">
+                    {importPreview.liabilities.map((v, i) => (
+                      <div
+                        key={`${i}-loan-${v.product_name}`}
+                        className="flex items-center justify-between gap-2 text-xs"
+                      >
+                        <span className="flex min-w-0 items-center gap-1 text-muted-foreground">
+                          <Badge variant="secondary">대출</Badge>
+                          <span className="truncate">{v.product_name}</span>
+                        </span>
+                        <span className="shrink-0 tabular-nums text-rose-400">
+                          -{formatKRW(v.value)}
+                        </span>
                       </div>
                     ))}
                   </div>

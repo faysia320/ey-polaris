@@ -332,6 +332,16 @@ class ImportValuationRow(BaseModel):
     value: int = Field(ge=0, description="KRW 정수(원) 평가액")
 
 
+class ImportLiabilityRow(BaseModel):
+    """뱅샐현황 부채 표에서 읽은 대출 잔액 한 줄 (미리보기 표시용).
+
+    value는 대출 원금(양수)이며, 반영 시 음수 평가액으로 총자산에서 차감된다.
+    """
+
+    product_name: str = Field(description="엑셀 상품명 — 같은 이름의 loan 계정과 매칭")
+    value: int = Field(ge=0, description="KRW 정수(원) 대출 원금 — 반영 시 음수로 차감")
+
+
 class ImportPreview(BaseModel):
     month: str
     month_rows: int = Field(description="해당 월 전체 행 수")
@@ -340,6 +350,9 @@ class ImportPreview(BaseModel):
     skipped: list[ImportSkippedRow]
     valuations: list[ImportValuationRow] = Field(
         default_factory=list, description="뱅샐현황에서 읽은 부동산 평가액 (오늘 날짜로 반영 예정)"
+    )
+    liabilities: list[ImportLiabilityRow] = Field(
+        default_factory=list, description="뱅샐현황에서 읽은 대출 잔액 (오늘 날짜로 반영 예정)"
     )
 
 
@@ -366,4 +379,7 @@ class ImportResult(BaseModel):
     created_accounts: list[str] = Field(description="자동 생성된 자산 계정명")
     valuation_count: int = Field(
         default=0, description="오늘 날짜로 기록·갱신된 부동산 평가액 수"
+    )
+    loan_count: int = Field(
+        default=0, description="오늘 날짜로 기록·갱신된 대출 잔액(음수 평가액) 수"
     )
