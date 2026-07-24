@@ -11,7 +11,7 @@
 """
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from io import BytesIO
 
 from openpyxl import load_workbook
@@ -33,6 +33,7 @@ class ExcelFormatError(ValueError):
 class ParsedRow:
     row: int  # 엑셀 행 번호 (헤더 포함 1부터)
     date: date
+    time: time | None  # 엑셀 "시간" 컬럼 — 없으면 None
     kind: str  # income | expense
     major: str
     minor: str
@@ -66,6 +67,7 @@ class ReviewRow:
 
     row: int
     date: date
+    time: time | None
     major: str
     minor: str
     description: str | None
@@ -81,6 +83,20 @@ def _to_date(value) -> date | None:
         return value
     if isinstance(value, (int, float)):
         return EXCEL_EPOCH + timedelta(days=int(value))
+    return None
+
+
+def _to_time(value) -> time | None:
+    if isinstance(value, datetime):
+        return value.time()
+    if isinstance(value, time):
+        return value
+    if isinstance(value, (int, float)):
+        # 엑셀 시간 시리얼 — 하루의 소수 비율. 정수부(날짜)는 버리고 소수만 시각으로 환산
+        frac = float(value) % 1
+        total = round(frac * 86400)
+        total %= 86400
+        return time(total // 3600, (total % 3600) // 60, total % 60)
     return None
 
 
@@ -115,6 +131,7 @@ def parse_ledger(
         if missing:
             raise ExcelFormatError(f"필수 컬럼이 없습니다: {', '.join(missing)}")
         memo_idx = col.get("메모")
+        time_idx = col.get("시간")  # 선택 컬럼 — 없으면 time=None
 
         parsed: list[ParsedRow] = []
         review: list[ReviewRow] = []
@@ -132,6 +149,9 @@ def parse_ledger(
             if tx_date.strftime("%Y-%m") != month:
                 continue
             month_rows += 1
+            tx_time = _to_time(
+                values[time_idx] if time_idx is not None and time_idx < len(values) else None
+            )
 
             def skip(reason: str):
                 skipped.append(SkippedRow(row=row_no, reason=reason))
@@ -165,6 +185,7 @@ def parse_ledger(
                     ReviewRow(
                         row=row_no,
                         date=tx_date,
+                        time=tx_time,
                         major=major,
                         minor=minor,
                         description=memo[:MEMO_MAX] if memo else None,
@@ -190,6 +211,7 @@ def parse_ledger(
                 ParsedRow(
                     row=row_no,
                     date=tx_date,
+                    time=tx_time,
                     kind=kind,
                     major=major,
                     minor=minor,

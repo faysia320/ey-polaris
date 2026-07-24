@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   flexRender,
   getCoreRowModel,
@@ -13,6 +13,7 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Eye,
   FileUp,
   Link2,
   Pencil,
@@ -56,7 +57,7 @@ import { MemberFilterSelect } from '@/components/members/MemberFilterSelect'
 import { TransactionCalendar } from '@/components/transactions/TransactionCalendar'
 import { api } from '@/lib/api'
 import { addMonths, categoryLabel, currentMonth, formatKRW, formatNumber, KIND_LABEL, todayISO } from '@/lib/format'
-import { touchTarget } from '@/lib/utils'
+import { cn, touchTarget } from '@/lib/utils'
 import { useMasterDataStore } from '@/stores/masterData'
 import { useMemberFilterStore } from '@/stores/memberFilter'
 import { useTransactionStore } from '@/stores/transactions'
@@ -71,6 +72,8 @@ import type {
 
 interface FormState {
   date: string
+  /** 거래 시각 "HH:MM" — 미입력이면 빈 문자열 */
+  time: string
   kind: TransactionKind
   /** 대분류 — 소분류(category_id) 선택을 위한 중간 단계 */
   category_major: string
@@ -85,6 +88,7 @@ interface FormState {
 
 const emptyForm = (): FormState => ({
   date: todayISO(),
+  time: '',
   kind: 'expense',
   category_major: '',
   category_id: '',
@@ -116,11 +120,69 @@ const LINK_LABEL: Record<LinkType, string> = {
 /** 묶음 배지 — 이체 색(청)과 구분되도록 보라 계열의 은은한 틴트 */
 const LINK_BADGE_CLASS = 'gap-1 bg-violet-500/15 text-violet-300 border-violet-500/25'
 
+/** 거래 시각 표시 — "HH:MM:SS"/"HH:MM"을 "HH:MM"으로 축약 */
+const formatTime = (time: string) => time.slice(0, 5)
+
 const kindAmountClass = (kind: TransactionKind) =>
   kind === 'income' ? 'text-emerald-400' : kind === 'expense' ? 'text-rose-400' : 'text-sky-400'
 
 const kindAmountSign = (kind: TransactionKind) =>
   kind === 'income' ? '+' : kind === 'expense' ? '-' : ''
+
+/** 묶인 거래(병합 행으로 표시)인지 — 링크 정보와 짝 요약이 모두 있을 때만 병합할 수 있다 */
+const isBundle = (t: Transaction) =>
+  t.link_id != null && t.link_type != null && t.linked_partner != null
+
+/** 병합 행/묶음 보기가 쓰는 한 다리 요약 (앵커 자신 또는 짝) */
+interface BundleLeg {
+  amount: number
+  date: string
+  time: string | null
+  account_name: string
+  category_name: string
+  memo: string | null
+}
+
+/** 묶음 앵커 거래에서 지출/수입 두 다리를 뽑는다 (앵커가 어느 쪽이든 결과는 동일) */
+const bundleLegs = (t: Transaction): { expense: BundleLeg; income: BundleLeg } => {
+  const partner = t.linked_partner!
+  const self: BundleLeg = {
+    amount: t.amount,
+    date: t.date,
+    time: t.time,
+    account_name: t.account_name,
+    category_name: t.category_name,
+    memo: t.memo,
+  }
+  const other: BundleLeg = {
+    amount: partner.amount,
+    date: partner.date,
+    time: partner.time,
+    account_name: partner.account_name,
+    category_name: partner.category_name,
+    memo: partner.memo,
+  }
+  return t.kind === 'expense' ? { expense: self, income: other } : { expense: other, income: self }
+}
+
+/** 병합 행의 표시값 — 이체 묶음: 출금→입금·거래 금액(청), 환불 묶음: 순지출(적) */
+const bundleDisplay = (t: Transaction) => {
+  const { expense, income } = bundleLegs(t)
+  if (t.link_type === 'transfer') {
+    return {
+      kind: 'transfer' as TransactionKind,
+      amount: expense.amount,
+      accountText: `${expense.account_name} → ${income.account_name}`,
+      category_name: expense.category_name,
+    }
+  }
+  return {
+    kind: 'expense' as TransactionKind,
+    amount: Math.max(expense.amount - income.amount, 0),
+    accountText: expense.account_name,
+    category_name: expense.category_name,
+  }
+}
 
 export function TransactionsPage() {
   const { items, filters, fetch, setFilters, create, update, remove, removeMonth, link, unlink } =
@@ -146,12 +208,20 @@ export function TransactionsPage() {
   // 삭제 완료처럼 오류가 아닌 안내 (pageError는 destructive 색이라 성공에 쓰지 않는다)
   const [pageNotice, setPageNotice] = useState<string | null>(null)
 
-  // 거래 묶기 — 목록에서 선택한 거래 id 집합과 묶기 확인 다이얼로그 상태
-  const [selected, setSelected] = useState<Set<number>>(new Set())
-  const [linkOpen, setLinkOpen] = useState(false)
+  // 거래 묶기 — 수정 모달의 "묶음" 버튼에서 진입하는 연결 대상 선택 다이얼로그.
+  // linkSource: 수정 중이던(묶을 기준) 거래, linkTarget: 목록에서 고른 상대 거래
+  const [linkPickerOpen, setLinkPickerOpen] = useState(false)
+  const [linkSource, setLinkSource] = useState<Transaction | null>(null)
+  const [linkTarget, setLinkTarget] = useState<Transaction | null>(null)
   const [linkType, setLinkType] = useState<LinkType>('transfer')
   const [linking, setLinking] = useState(false)
   const [linkError, setLinkError] = useState<string | null>(null)
+
+  // 묶음 보기 — 병합 행에서 두 다리 상세를 확인하고 해제하는 다이얼로그
+  const [viewOpen, setViewOpen] = useState(false)
+  const [viewTx, setViewTx] = useState<Transaction | null>(null)
+  const [viewError, setViewError] = useState<string | null>(null)
+  const [unlinking, setUnlinking] = useState(false)
 
   const [importOpen, setImportOpen] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
@@ -176,19 +246,12 @@ export function TransactionsPage() {
   }, [fetchAll, loaded])
 
   // 삭제 안내는 그 조회 조건에 대한 것이므로, 조건이 바뀌면 더는 유효하지 않다.
-  // 선택도 목록이 바뀌면 대상이 사라질 수 있으므로 함께 초기화한다.
   useEffect(() => {
     setPageNotice(null)
-    setSelected(new Set())
   }, [filters.month, filters.kind, filters.major, filters.category_id, filters.member_id])
 
   // 캘린더 뷰는 항상 특정 월을 기준으로 한다 (월 필터가 비어 있으면 현재 월)
   const calendarMonth = filters.month ?? currentMonth()
-  // 선택일이 표시 중인 월을 벗어나면 상세 목록을 숨긴다
-  const dayTransactions =
-    selectedDate && selectedDate.startsWith(calendarMonth)
-      ? items.filter((t) => t.date === selectedDate)
-      : null
 
   const switchView = (next: 'table' | 'calendar') => {
     setView(next)
@@ -217,6 +280,7 @@ export function TransactionsPage() {
     setEditing(t)
     setForm({
       date: t.date,
+      time: t.time ?? '',
       kind: t.kind,
       category_major: categories.find((c) => c.id === t.category_id)?.major ?? '',
       category_id: String(t.category_id),
@@ -245,6 +309,7 @@ export function TransactionsPage() {
     }
     const payload = {
       date: form.date,
+      time: form.time || null,
       kind: form.kind,
       amount,
       category_id: Number(form.category_id),
@@ -266,39 +331,56 @@ export function TransactionsPage() {
     }
   }
 
-  // 묶기용 선택 토글 / 묶음 해제 — columns 정의보다 앞서야 셀에서 참조할 수 있다
-  const toggleSelect = useCallback((id: number) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }, [])
+  // 병합 표시 행 — 묶인 두 다리를 한 행으로 합친다. link_id당 1행만 노출하며,
+  // 양다리가 모두 로드됐으면 지출 leg를, 한쪽만 로드됐으면 그 leg를 앵커로 삼는다.
+  const displayRows = useMemo(() => {
+    const legsByLink = new Map<number, Transaction[]>()
+    for (const t of items) {
+      if (t.link_id != null) {
+        const arr = legsByLink.get(t.link_id)
+        if (arr) arr.push(t)
+        else legsByLink.set(t.link_id, [t])
+      }
+    }
+    const anchorByLink = new Map<number, number>()
+    for (const [linkId, legs] of legsByLink) {
+      const expense = legs.find((l) => l.kind === 'expense')
+      anchorByLink.set(linkId, (expense ?? legs[0]).id)
+    }
+    const rows: Transaction[] = []
+    const emitted = new Set<number>()
+    for (const t of items) {
+      if (t.link_id == null) {
+        rows.push(t)
+        continue
+      }
+      if (emitted.has(t.link_id)) continue
+      if (anchorByLink.get(t.link_id) !== t.id) continue
+      rows.push(t)
+      emitted.add(t.link_id)
+    }
+    return rows
+  }, [items])
 
-  const doUnlink = (linkId: number) => {
-    unlink(linkId).catch((e: Error) => setPageError(e.message))
+  // 캘린더 일별 상세도 병합 표시 행을 공유한다 (선택일이 표시 월을 벗어나면 숨김).
+  // 병합 행의 앵커 날짜(지출 leg)를 기준으로 그 날짜 칸에 한 건으로 나타난다.
+  const dayRows =
+    selectedDate && selectedDate.startsWith(calendarMonth)
+      ? displayRows.filter((t) => t.date === selectedDate)
+      : null
+
+  // 묶음 보기 진입 — columns 정의보다 앞서야 셀에서 참조할 수 있다
+  const openView = (t: Transaction) => {
+    setViewTx(t)
+    setViewError(null)
+    setViewOpen(true)
   }
 
   const columns = useMemo<ColumnDef<Transaction>[]>(
     () => [
       {
-        id: 'select',
-        header: '',
-        cell: ({ row }) => (
-          <input
-            type="checkbox"
-            className="size-4 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-40"
-            checked={selected.has(row.original.id)}
-            // 이미 묶인 거래는 다시 묶을 수 없으므로 선택 불가
-            disabled={!!row.original.link_id}
-            aria-label="거래 선택"
-            onChange={() => toggleSelect(row.original.id)}
-          />
-        ),
-      },
-      {
-        accessorKey: 'date',
+        id: 'date',
+        accessorFn: (t) => t.date,
         header: ({ column }) => (
           <Button
             variant="ghost"
@@ -308,33 +390,51 @@ export function TransactionsPage() {
             날짜 <ArrowUpDown className="size-3" />
           </Button>
         ),
-      },
-      {
-        accessorKey: 'kind',
-        header: '구분',
         cell: ({ row }) => (
-          <Badge variant="outline" className={KIND_BADGE_CLASS[row.original.kind]}>
-            {KIND_LABEL[row.original.kind]}
-          </Badge>
-        ),
-      },
-      {
-        accessorKey: 'category_name',
-        header: '카테고리',
-        cell: ({ row }) => (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span>{row.original.category_name}</span>
-            {row.original.link_type && (
-              <Badge variant="outline" className={LINK_BADGE_CLASS}>
-                <Link2 className="size-3" />
-                {LINK_LABEL[row.original.link_type]}
-              </Badge>
+          <div className="flex flex-col whitespace-nowrap tabular-nums">
+            <span>{row.original.date}</span>
+            {row.original.time && (
+              <span className="text-xs text-muted-foreground">
+                {formatTime(row.original.time)}
+              </span>
             )}
           </div>
         ),
       },
       {
-        accessorKey: 'amount',
+        id: 'kind',
+        header: '구분',
+        cell: ({ row }) => {
+          const kind = isBundle(row.original) ? bundleDisplay(row.original).kind : row.original.kind
+          return (
+            <Badge variant="outline" className={KIND_BADGE_CLASS[kind]}>
+              {KIND_LABEL[kind]}
+            </Badge>
+          )
+        },
+      },
+      {
+        id: 'category',
+        header: '카테고리',
+        cell: ({ row }) => {
+          const t = row.original
+          const category = isBundle(t) ? bundleDisplay(t).category_name : t.category_name
+          return (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span>{category}</span>
+              {t.link_type && (
+                <Badge variant="outline" className={LINK_BADGE_CLASS}>
+                  <Link2 className="size-3" />
+                  {LINK_LABEL[t.link_type]}
+                </Badge>
+              )}
+            </div>
+          )
+        },
+      },
+      {
+        id: 'amount',
+        accessorFn: (t) => (isBundle(t) ? bundleDisplay(t).amount : t.amount),
         header: ({ column }) => (
           <Button
             variant="ghost"
@@ -345,70 +445,90 @@ export function TransactionsPage() {
             금액 <ArrowUpDown className="size-3" />
           </Button>
         ),
-        cell: ({ row }) => (
-          <span className={`block text-right tabular-nums ${kindAmountClass(row.original.kind)}`}>
-            {kindAmountSign(row.original.kind)}
-            {formatNumber(row.original.amount)}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const t = row.original
+          const { kind, amount } = isBundle(t)
+            ? bundleDisplay(t)
+            : { kind: t.kind, amount: t.amount }
+          return (
+            <span className={`block text-right tabular-nums ${kindAmountClass(kind)}`}>
+              {kindAmountSign(kind)}
+              {formatNumber(amount)}
+            </span>
+          )
+        },
       },
       {
-        accessorKey: 'account_name',
+        id: 'account',
         header: '계정',
-        cell: ({ row }) =>
+        cell: ({ row }) => {
+          const t = row.original
+          if (isBundle(t)) return bundleDisplay(t).accountText
           // 이체는 출금 → 입금 흐름을 함께 표시
-          row.original.kind === 'transfer' && row.original.counter_account_name
-            ? `${row.original.account_name} → ${row.original.counter_account_name}`
-            : row.original.account_name,
+          return t.kind === 'transfer' && t.counter_account_name
+            ? `${t.account_name} → ${t.counter_account_name}`
+            : t.account_name
+        },
       },
       {
-        accessorKey: 'member_name',
+        id: 'member',
         header: '구성원',
         cell: ({ row }) => row.original.member_name ?? '—',
       },
       {
-        accessorKey: 'memo',
+        id: 'memo',
         header: '메모',
         cell: ({ row }) => row.original.memo ?? '',
       },
       {
         id: 'actions',
         header: '',
-        cell: ({ row }) => (
-          <div className="flex justify-end gap-1">
-            {row.original.link_id && (
+        cell: ({ row }) => {
+          const t = row.original
+          // 묶인 행은 "묶음 보기"만 — 수정/삭제는 해제 후 개별 행에서 한다
+          if (isBundle(t)) {
+            return (
+              <div className="flex justify-end gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="묶음 보기"
+                  title="묶음 보기"
+                  onClick={() => openView(t)}
+                >
+                  <Eye />
+                </Button>
+              </div>
+            )
+          }
+          return (
+            <div className="flex justify-end gap-1">
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="묶음 해제"
-                title="묶음 해제"
-                onClick={() => doUnlink(row.original.link_id!)}
+                aria-label="거래 수정"
+                onClick={() => openEdit(t)}
               >
-                <Unlink />
+                <Pencil />
               </Button>
-            )}
-            <Button variant="ghost" size="icon-sm" onClick={() => openEdit(row.original)}>
-              <Pencil />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() =>
-                remove(row.original.id).catch((e: Error) => setPageError(e.message))
-              }
-            >
-              <Trash2 className="text-destructive" />
-            </Button>
-          </div>
-        ),
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="거래 삭제"
+                onClick={() => remove(t.id).catch((e: Error) => setPageError(e.message))}
+              >
+                <Trash2 className="text-destructive" />
+              </Button>
+            </div>
+          )
+        },
       },
     ],
-    // selected가 바뀌면 체크박스 표시를 갱신해야 하므로 의존성에 포함한다
-    [remove, selected, toggleSelect],
+    [remove],
   )
 
   const table = useReactTable({
-    data: items,
+    data: displayRows,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
@@ -569,42 +689,89 @@ export function TransactionsPage() {
   }
 
   // ----- 거래 묶기(연결) -----
-  // 현재 선택된 거래 (목록에 남아 있는 것만)
-  const selectedTxs = useMemo(() => items.filter((t) => selected.has(t.id)), [items, selected])
-  // 정확히 수입 1건 + 지출 1건이어야 묶을 수 있다
-  const selectedIncome = selectedTxs.find((t) => t.kind === 'income')
-  const selectedExpense = selectedTxs.find((t) => t.kind === 'expense')
-  const canLink = selectedTxs.length === 2 && !!selectedIncome && !!selectedExpense
-
-  const openLink = () => {
-    if (!canLink || !selectedIncome || !selectedExpense) return
-    // 계정이 다르면 이체, 같으면 환불을 기본 제안 (사용자가 다이얼로그에서 변경 가능)
-    setLinkType(selectedIncome.account_id === selectedExpense.account_id ? 'refund' : 'transfer')
+  // 수정 모달의 "묶음" 버튼 → 연결 대상 선택 다이얼로그. 수정 모달은 닫고 전환한다.
+  const openLinkPicker = (source: Transaction) => {
+    setDialogOpen(false)
+    setLinkSource(source)
+    setLinkTarget(null)
+    setLinkType('transfer')
     setLinkError(null)
-    setLinkOpen(true)
+    setLinkPickerOpen(true)
+  }
+
+  // 연결 후보 — 현재 목록에서 반대 구분·미묶임이며 자기 자신이 아닌 거래
+  const linkCandidates = useMemo(() => {
+    if (!linkSource) return []
+    const wantKind: TransactionKind = linkSource.kind === 'expense' ? 'income' : 'expense'
+    return items.filter(
+      (t) => t.id !== linkSource.id && t.link_id == null && t.kind === wantKind,
+    )
+  }, [items, linkSource])
+
+  // 미리보기용 — source/target에서 뽑은 지출·수입 다리
+  const linkExpense =
+    linkSource && linkTarget
+      ? linkSource.kind === 'expense'
+        ? linkSource
+        : linkTarget
+      : null
+  const linkIncome =
+    linkSource && linkTarget
+      ? linkSource.kind === 'income'
+        ? linkSource
+        : linkTarget
+      : null
+
+  // 후보를 고르면 계정 일치 여부로 유형을 기본 제안한다 (사용자가 바꿀 수 있음)
+  const selectCandidate = (candidate: Transaction) => {
+    if (!linkSource) return
+    setLinkTarget(candidate)
+    const income = linkSource.kind === 'income' ? linkSource : candidate
+    const expense = linkSource.kind === 'expense' ? linkSource : candidate
+    setLinkType(income.account_id === expense.account_id ? 'refund' : 'transfer')
+    setLinkError(null)
   }
 
   const confirmLink = async () => {
-    if (!selectedIncome || !selectedExpense) return
+    if (!linkSource || !linkTarget) return
+    const income = linkSource.kind === 'income' ? linkSource : linkTarget
+    const expense = linkSource.kind === 'expense' ? linkSource : linkTarget
     // 서버도 검증하지만, 더 친절한 메시지를 위해 클라이언트에서 먼저 막는다
     if (linkType === 'transfer') {
-      if (selectedIncome.account_id === selectedExpense.account_id)
+      if (income.account_id === expense.account_id)
         return setLinkError('이체 묶음은 출금·입금 계정이 서로 달라야 해요')
-      if (selectedIncome.amount !== selectedExpense.amount)
+      if (income.amount !== expense.amount)
         return setLinkError('이체 묶음은 두 거래의 금액이 같아야 해요')
-    } else if (selectedIncome.amount > selectedExpense.amount) {
+    } else if (income.amount > expense.amount) {
       return setLinkError('환불 금액이 지출 금액보다 클 수 없어요')
     }
     setLinking(true)
     setLinkError(null)
     try {
-      await link([...selected], linkType)
-      setSelected(new Set())
-      setLinkOpen(false)
+      await link([linkSource.id, linkTarget.id], linkType)
+      setLinkPickerOpen(false)
+      setLinkSource(null)
+      setLinkTarget(null)
     } catch (e) {
       setLinkError((e as Error).message)
     } finally {
       setLinking(false)
+    }
+  }
+
+  // ----- 묶음 해제 (묶음 보기 다이얼로그) -----
+  const confirmUnlink = async () => {
+    if (!viewTx?.link_id) return
+    setUnlinking(true)
+    setViewError(null)
+    try {
+      await unlink(viewTx.link_id)
+      setViewOpen(false)
+      setViewTx(null)
+    } catch (e) {
+      setViewError((e as Error).message)
+    } finally {
+      setUnlinking(false)
     }
   }
 
@@ -748,26 +915,6 @@ export function TransactionsPage() {
 
       {view === 'table' ? (
         <>
-          {/* 거래 묶기 액션 바 — 하나 이상 선택했을 때만 노출 */}
-          {selected.size > 0 && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-2 text-sm">
-              <span className="text-muted-foreground">{selected.size}건 선택됨</span>
-              <Button size="sm" onClick={openLink} disabled={!canLink}>
-                <Link2 /> 묶기
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
-                선택 해제
-              </Button>
-              {selectedTxs.length === 2 && !canLink && (
-                <span className="text-xs text-muted-foreground">
-                  수입 1건과 지출 1건을 선택해주세요
-                </span>
-              )}
-              {selectedTxs.length > 2 && (
-                <span className="text-xs text-muted-foreground">두 건만 묶을 수 있어요</span>
-              )}
-            </div>
-          )}
           {/* 데스크톱(sm+): 표 / 모바일(sm 미만): 카드 목록 — 같은 정렬·페이지네이션 데이터 재사용 */}
           <div className="hidden rounded-lg border sm:block">
             <Table>
@@ -818,46 +965,40 @@ export function TransactionsPage() {
             ) : (
               table.getRowModel().rows.map((row) => {
                 const t = row.original
-                const account =
-                  t.kind === 'transfer' && t.counter_account_name
+                const bundle = isBundle(t)
+                const disp = bundle ? bundleDisplay(t) : null
+                const kind = disp ? disp.kind : t.kind
+                const amount = disp ? disp.amount : t.amount
+                const category = disp ? disp.category_name : t.category_name
+                const account = disp
+                  ? disp.accountText
+                  : t.kind === 'transfer' && t.counter_account_name
                     ? `${t.account_name} → ${t.counter_account_name}`
                     : t.account_name
                 return (
                   <div key={row.id} className="rounded-lg border p-3">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex min-w-0 items-start gap-2">
-                        {/* 묶기용 선택 — 터치 대상 확보를 위해 라벨로 감싼다 */}
-                        <label className={`flex ${touchTarget} shrink-0 items-center justify-center`}>
-                          <input
-                            type="checkbox"
-                            className="size-4 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-40"
-                            checked={selected.has(t.id)}
-                            disabled={!!t.link_id}
-                            aria-label="거래 선택"
-                            onChange={() => toggleSelect(t.id)}
-                          />
-                        </label>
-                        <div className="flex min-w-0 flex-col gap-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="outline" className={KIND_BADGE_CLASS[t.kind]}>{KIND_LABEL[t.kind]}</Badge>
-                            {t.link_type && (
-                              <Badge variant="outline" className={LINK_BADGE_CLASS}>
-                                <Link2 className="size-3" />
-                                {LINK_LABEL[t.link_type]}
-                              </Badge>
-                            )}
-                            <span className="text-xs tabular-nums text-muted-foreground">
-                              {t.date}
-                            </span>
-                          </div>
-                          <span className="truncate font-medium">{t.category_name}</span>
+                      <div className="flex min-w-0 flex-col gap-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline" className={KIND_BADGE_CLASS[kind]}>{KIND_LABEL[kind]}</Badge>
+                          {t.link_type && (
+                            <Badge variant="outline" className={LINK_BADGE_CLASS}>
+                              <Link2 className="size-3" />
+                              {LINK_LABEL[t.link_type]}
+                            </Badge>
+                          )}
+                          <span className="text-xs tabular-nums text-muted-foreground">
+                            {t.date}
+                            {t.time && ` ${formatTime(t.time)}`}
+                          </span>
                         </div>
+                        <span className="truncate font-medium">{category}</span>
                       </div>
                       <span
-                        className={`shrink-0 font-semibold tabular-nums ${kindAmountClass(t.kind)}`}
+                        className={`shrink-0 font-semibold tabular-nums ${kindAmountClass(kind)}`}
                       >
-                        {kindAmountSign(t.kind)}
-                        {formatNumber(t.amount)}
+                        {kindAmountSign(kind)}
+                        {formatNumber(amount)}
                       </span>
                     </div>
                     <div className="mt-2 flex items-end justify-between gap-2">
@@ -869,37 +1010,40 @@ export function TransactionsPage() {
                         {t.memo && <span className="truncate">{t.memo}</span>}
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
-                        {t.link_id && (
+                        {bundle ? (
                           <Button
                             variant="ghost"
                             size="icon-sm"
                             className={touchTarget}
-                            aria-label="묶음 해제"
-                            onClick={() => doUnlink(t.link_id!)}
+                            aria-label="묶음 보기"
+                            onClick={() => openView(t)}
                           >
-                            <Unlink />
+                            <Eye />
                           </Button>
+                        ) : (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className={touchTarget}
+                              aria-label="거래 수정"
+                              onClick={() => openEdit(t)}
+                            >
+                              <Pencil />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className={touchTarget}
+                              aria-label="거래 삭제"
+                              onClick={() =>
+                                remove(t.id).catch((e: Error) => setPageError(e.message))
+                              }
+                            >
+                              <Trash2 className="text-destructive" />
+                            </Button>
+                          </>
                         )}
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          className={touchTarget}
-                          aria-label="거래 수정"
-                          onClick={() => openEdit(t)}
-                        >
-                          <Pencil />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          className={touchTarget}
-                          aria-label="거래 삭제"
-                          onClick={() =>
-                            remove(t.id).catch((e: Error) => setPageError(e.message))
-                          }
-                        >
-                          <Trash2 className="text-destructive" />
-                        </Button>
                       </div>
                     </div>
                   </div>
@@ -964,69 +1108,82 @@ export function TransactionsPage() {
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
           />
-          {dayTransactions && (
+          {dayRows && (
             <div className="space-y-2 rounded-lg border p-4">
               <p className="text-sm font-medium">{selectedDate} 거래</p>
-              {dayTransactions.length === 0 && (
+              {dayRows.length === 0 && (
                 <p className="text-sm text-muted-foreground">이 날의 거래가 없습니다.</p>
               )}
-              {dayTransactions.map((t) => (
-                <div key={t.id} className="flex items-center justify-between gap-2 text-sm">
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-                    <Badge variant="outline" className={KIND_BADGE_CLASS[t.kind]}>{KIND_LABEL[t.kind]}</Badge>
-                    {t.link_type && (
-                      <Badge variant="outline" className={LINK_BADGE_CLASS}>
-                        <Link2 className="size-3" />
-                        {LINK_LABEL[t.link_type]}
-                      </Badge>
-                    )}
-                    <span className="min-w-0 truncate">{t.category_name}</span>
-                    <span className="min-w-0 truncate text-xs text-muted-foreground">
-                      {t.kind === 'transfer' && t.counter_account_name
-                        ? `${t.account_name} → ${t.counter_account_name}`
-                        : t.account_name}
-                    </span>
-                    {t.memo && (
-                      <span className="min-w-0 truncate text-xs text-muted-foreground">{t.memo}</span>
-                    )}
+              {dayRows.map((t) => {
+                const bundle = isBundle(t)
+                const disp = bundle ? bundleDisplay(t) : null
+                const kind = disp ? disp.kind : t.kind
+                const amount = disp ? disp.amount : t.amount
+                const category = disp ? disp.category_name : t.category_name
+                const account = disp
+                  ? disp.accountText
+                  : t.kind === 'transfer' && t.counter_account_name
+                    ? `${t.account_name} → ${t.counter_account_name}`
+                    : t.account_name
+                return (
+                  <div key={t.id} className="flex items-center justify-between gap-2 text-sm">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <Badge variant="outline" className={KIND_BADGE_CLASS[kind]}>{KIND_LABEL[kind]}</Badge>
+                      {t.link_type && (
+                        <Badge variant="outline" className={LINK_BADGE_CLASS}>
+                          <Link2 className="size-3" />
+                          {LINK_LABEL[t.link_type]}
+                        </Badge>
+                      )}
+                      <span className="min-w-0 truncate">{category}</span>
+                      <span className="min-w-0 truncate text-xs text-muted-foreground">
+                        {account}
+                      </span>
+                      {t.memo && (
+                        <span className="min-w-0 truncate text-xs text-muted-foreground">{t.memo}</span>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className={kindAmountClass(kind)}>
+                        {kindAmountSign(kind)}
+                        {formatNumber(amount)}
+                      </span>
+                      {bundle ? (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className={touchTarget}
+                          aria-label="묶음 보기"
+                          onClick={() => openView(t)}
+                        >
+                          <Eye />
+                        </Button>
+                      ) : (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className={touchTarget}
+                            aria-label="거래 수정"
+                            onClick={() => openEdit(t)}
+                          >
+                            <Pencil />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className={touchTarget}
+                            aria-label="거래 삭제"
+                            onClick={() => remove(t.id).catch((e: Error) => setPageError(e.message))}
+                          >
+                            <Trash2 className="text-destructive" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span className={kindAmountClass(t.kind)}>
-                      {kindAmountSign(t.kind)}
-                      {formatNumber(t.amount)}
-                    </span>
-                    {t.link_id && (
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className={touchTarget}
-                        aria-label="묶음 해제"
-                        onClick={() => doUnlink(t.link_id!)}
-                      >
-                        <Unlink />
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className={touchTarget}
-                      aria-label="거래 수정"
-                      onClick={() => openEdit(t)}
-                    >
-                      <Pencil />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className={touchTarget}
-                      aria-label="거래 삭제"
-                      onClick={() => remove(t.id).catch((e: Error) => setPageError(e.message))}
-                    >
-                      <Trash2 className="text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
@@ -1052,6 +1209,16 @@ export function TransactionsPage() {
                   id="tx-date"
                   value={form.date}
                   onChange={(date) => setForm({ ...form, date })}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="tx-time">시간 (선택)</Label>
+                <Input
+                  id="tx-time"
+                  type="time"
+                  step="1"
+                  value={form.time}
+                  onChange={(e) => setForm({ ...form, time: e.target.value })}
                 />
               </div>
               <div className="space-y-1">
@@ -1203,11 +1370,27 @@ export function TransactionsPage() {
             {formError && <p className="text-sm text-destructive">{formError}</p>}
           </div>
           </ScrollArea>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              취소
-            </Button>
-            <Button onClick={submit}>{editing ? '수정' : '추가'}</Button>
+          {/* footer 좌측 끝에 "묶음" 진입 버튼 — 수정 중이며 아직 묶이지 않은 수입/지출일 때만.
+              이체는 묶음(수입+지출) 대상이 아니고, 이미 묶인 거래는 해제 후 수정하도록 안내한다. */}
+          <DialogFooter className="sm:justify-between">
+            {editing && !editing.link_id && editing.kind !== 'transfer' ? (
+              <Button variant="outline" onClick={() => openLinkPicker(editing)}>
+                <Link2 /> 묶음
+              </Button>
+            ) : editing?.link_id ? (
+              <span className="self-center text-xs text-muted-foreground">
+                묶음을 해제한 뒤 수정할 수 있어요
+              </span>
+            ) : (
+              // 좌측 자리 유지용 — 오른쪽 버튼 그룹을 우측에 고정 (추가 모달·이체엔 묶음 없음)
+              <span className="hidden sm:block" />
+            )}
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                취소
+              </Button>
+              <Button onClick={submit}>{editing ? '수정' : '추가'}</Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1514,82 +1697,217 @@ export function TransactionsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={linkOpen} onOpenChange={setLinkOpen}>
-        <DialogContent className="sm:max-w-md">
+      {/* 연결 대상 선택 — 수정 모달 "묶음" 버튼에서 진입. 현재 목록의 반대 구분 후보를 고른다.
+          본문만 스크롤(후보가 많을 수 있음), 헤더/푸터 고정 */}
+      <Dialog open={linkPickerOpen} onOpenChange={setLinkPickerOpen}>
+        <DialogContent className="sm:max-w-md max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto]">
           <DialogHeader>
-            <DialogTitle>거래 묶기</DialogTitle>
+            <DialogTitle>연결할 거래 선택</DialogTitle>
             <DialogDescription>
-              선택한 두 거래를 하나의 묶음으로 연결해요. 원본은 그대로 남고 통계에만 반영돼요.
+              현재 목록에서 묶을 상대 거래를 골라 하나의 묶음으로 연결해요. 원본은 그대로 남고
+              통계에만 반영돼요.
             </DialogDescription>
           </DialogHeader>
-          {selectedIncome && selectedExpense && (
+          <ScrollArea className="min-h-0 pr-3">
             <div className="space-y-3 text-sm">
-              {/* 선택한 두 거래 요약 */}
-              <div className="space-y-1 rounded-md border p-2 text-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-muted-foreground">
-                    지출 · {selectedExpense.account_name}
-                  </span>
-                  <span className="shrink-0 tabular-nums text-rose-400">
-                    -{formatNumber(selectedExpense.amount)}
-                  </span>
+              {linkSource && (
+                <div className="space-y-1 rounded-md border p-2 text-xs">
+                  <p className="font-medium">묶을 기준 거래</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="min-w-0 truncate text-muted-foreground">
+                      {KIND_LABEL[linkSource.kind]} · {linkSource.category_name} ·{' '}
+                      {linkSource.account_name}
+                    </span>
+                    <span
+                      className={`shrink-0 tabular-nums ${kindAmountClass(linkSource.kind)}`}
+                    >
+                      {kindAmountSign(linkSource.kind)}
+                      {formatNumber(linkSource.amount)}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-muted-foreground">
-                    수입 · {selectedIncome.account_name}
-                  </span>
-                  <span className="shrink-0 tabular-nums text-emerald-400">
-                    +{formatNumber(selectedIncome.amount)}
-                  </span>
-                </div>
-              </div>
+              )}
               <div className="space-y-1">
-                <Label>묶음 유형</Label>
-                <Select value={linkType} onValueChange={(v) => setLinkType(v as LinkType)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="transfer">이체 (계좌 간 이동)</SelectItem>
-                    <SelectItem value="refund">환불 (결제 취소)</SelectItem>
-                  </SelectContent>
-                </Select>
+                <p className="text-xs text-muted-foreground">
+                  현재 목록에서 연결할 {linkSource?.kind === 'expense' ? '수입' : '지출'} 거래를
+                  고르세요.
+                </p>
+                {linkCandidates.length === 0 ? (
+                  <p className="rounded-md border py-6 text-center text-xs text-muted-foreground">
+                    현재 목록에 묶을 수 있는{' '}
+                    {linkSource?.kind === 'expense' ? '수입' : '지출'} 거래가 없어요. 조회 월·필터를
+                    옮겨 상대 거래가 보이게 한 뒤 다시 시도해주세요.
+                  </p>
+                ) : (
+                  <div className="space-y-1">
+                    {linkCandidates.map((c) => {
+                      const active = linkTarget?.id === c.id
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => selectCandidate(c)}
+                          className={cn(
+                            'flex w-full items-center justify-between gap-2 rounded-md border p-2 text-left text-xs transition-colors hover:bg-accent/50',
+                            active && 'border-primary bg-accent',
+                          )}
+                        >
+                          <span className="flex min-w-0 flex-col">
+                            <span className="truncate">
+                              {c.date}
+                              {c.time && ` ${formatTime(c.time)}`} · {c.category_name}
+                            </span>
+                            <span className="truncate text-muted-foreground">
+                              {c.account_name}
+                              {c.memo ? ` · ${c.memo}` : ''}
+                            </span>
+                          </span>
+                          <span className={`shrink-0 tabular-nums ${kindAmountClass(c.kind)}`}>
+                            {kindAmountSign(c.kind)}
+                            {formatNumber(c.amount)}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
-              {/* 유형별 효과 미리보기 */}
-              {linkType === 'transfer' ? (
-                <p className="text-xs text-muted-foreground">
-                  {selectedExpense.account_name} → {selectedIncome.account_name} 이체로 묶어요. 두 건
-                  모두 수입/지출 통계에서 빠지고, 계정 잔액은 그대로 유지돼요.
-                  {selectedIncome.amount !== selectedExpense.amount && (
-                    <span className="mt-1 block text-amber-400">
-                      ⚠️ 두 거래의 금액이 달라 이체로 묶을 수 없어요.
-                    </span>
+              {linkExpense && linkIncome && (
+                <>
+                  <div className="space-y-1">
+                    <Label>묶음 유형</Label>
+                    <Select value={linkType} onValueChange={(v) => setLinkType(v as LinkType)}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="transfer">이체 (계좌 간 이동)</SelectItem>
+                        <SelectItem value="refund">환불 (결제 취소)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {linkType === 'transfer' ? (
+                    <p className="text-xs text-muted-foreground">
+                      {linkExpense.account_name} → {linkIncome.account_name} 이체로 묶어요. 두 건
+                      모두 수입/지출 통계에서 빠지고, 계정 잔액은 그대로 유지돼요.
+                      {linkIncome.amount !== linkExpense.amount && (
+                        <span className="mt-1 block text-amber-400">
+                          ⚠️ 두 거래의 금액이 달라 이체로 묶을 수 없어요.
+                        </span>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      지출에서 환불액을 뺀 순지출{' '}
+                      <span className="tabular-nums text-foreground">
+                        {formatKRW(Math.max(linkExpense.amount - linkIncome.amount, 0))}
+                      </span>
+                      만 통계에 반영되고, 환불 수입은 수입 합계에서 빠져요.
+                      {linkIncome.amount > linkExpense.amount && (
+                        <span className="mt-1 block text-amber-400">
+                          ⚠️ 환불 금액이 지출 금액보다 커서 묶을 수 없어요.
+                        </span>
+                      )}
+                    </p>
                   )}
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  지출에서 환불액을 뺀 순지출{' '}
-                  <span className="tabular-nums text-foreground">
-                    {formatKRW(Math.max(selectedExpense.amount - selectedIncome.amount, 0))}
-                  </span>
-                  만 통계에 반영되고, 환불 수입은 수입 합계에서 빠져요.
-                  {selectedIncome.amount > selectedExpense.amount && (
-                    <span className="mt-1 block text-amber-400">
-                      ⚠️ 환불 금액이 지출 금액보다 커서 묶을 수 없어요.
-                    </span>
-                  )}
-                </p>
+                </>
               )}
               {linkError && <p className="text-sm text-destructive">{linkError}</p>}
             </div>
-          )}
+          </ScrollArea>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setLinkOpen(false)}>
+            <Button variant="outline" onClick={() => setLinkPickerOpen(false)}>
               취소
             </Button>
-            <Button onClick={confirmLink} disabled={linking}>
+            <Button onClick={confirmLink} disabled={linking || !linkTarget}>
               {linking ? '묶는 중…' : '묶기'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 묶음 보기 — 병합 행에서 두 다리 상세 확인 + 해제 */}
+      <Dialog open={viewOpen} onOpenChange={setViewOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>묶음 보기</DialogTitle>
+            <DialogDescription>
+              {viewTx?.link_type ? LINK_LABEL[viewTx.link_type] : '묶음'}으로 연결된 두 거래예요.
+              해제하면 각각 개별 거래로 돌아가요.
+            </DialogDescription>
+          </DialogHeader>
+          {viewTx &&
+            isBundle(viewTx) &&
+            (() => {
+              const { expense, income } = bundleLegs(viewTx)
+              return (
+                <div className="space-y-3 text-sm">
+                  {/* 지출 다리 */}
+                  <div className="space-y-1 rounded-md border p-2 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-1">
+                        <Badge variant="outline" className={KIND_BADGE_CLASS.expense}>
+                          {KIND_LABEL.expense}
+                        </Badge>
+                        <span className="truncate">{expense.category_name}</span>
+                      </span>
+                      <span className="shrink-0 tabular-nums text-rose-400">
+                        -{formatNumber(expense.amount)}
+                      </span>
+                    </div>
+                    <p className="truncate text-muted-foreground">
+                      {expense.date}
+                      {expense.time && ` ${formatTime(expense.time)}`} · {expense.account_name}
+                      {expense.memo ? ` · ${expense.memo}` : ''}
+                    </p>
+                  </div>
+                  {/* 수입 다리 */}
+                  <div className="space-y-1 rounded-md border p-2 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-1">
+                        <Badge variant="outline" className={KIND_BADGE_CLASS.income}>
+                          {KIND_LABEL.income}
+                        </Badge>
+                        <span className="truncate">{income.category_name}</span>
+                      </span>
+                      <span className="shrink-0 tabular-nums text-emerald-400">
+                        +{formatNumber(income.amount)}
+                      </span>
+                    </div>
+                    <p className="truncate text-muted-foreground">
+                      {income.date}
+                      {income.time && ` ${formatTime(income.time)}`} · {income.account_name}
+                      {income.memo ? ` · ${income.memo}` : ''}
+                    </p>
+                  </div>
+                  {/* 유형별 효과 요약 */}
+                  <p className="text-xs text-muted-foreground">
+                    {viewTx.link_type === 'transfer' ? (
+                      '두 건 모두 수입/지출 통계에서 빠지고, 계정 잔액은 그대로예요.'
+                    ) : (
+                      <>
+                        지출에서 환불액을 뺀 순지출{' '}
+                        <span className="tabular-nums text-foreground">
+                          {formatKRW(Math.max(expense.amount - income.amount, 0))}
+                        </span>
+                        만 통계에 반영돼요.
+                      </>
+                    )}
+                  </p>
+                  {viewError && <p className="text-sm text-destructive">{viewError}</p>}
+                </div>
+              )
+            })()}
+          <DialogFooter className="sm:justify-between">
+            <Button
+              variant="outline"
+              className="text-destructive"
+              onClick={confirmUnlink}
+              disabled={unlinking}
+            >
+              <Unlink /> {unlinking ? '해제 중…' : '묶음 해제'}
+            </Button>
+            <Button onClick={() => setViewOpen(false)}>닫기</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

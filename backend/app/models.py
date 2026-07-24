@@ -1,5 +1,6 @@
 from datetime import date as date_type
 from datetime import datetime
+from datetime import time as time_type
 
 from sqlalchemy import (
     BigInteger,
@@ -9,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     String,
     Text,
+    Time,
     UniqueConstraint,
     func,
 )
@@ -105,6 +107,10 @@ class TransactionLink(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
+    # 이 묶음에 속한 거래들(수입 1 + 지출 1). 병합 행/묶음 보기가 파트너 다리 요약을
+    # 뽑을 때 사용 — 파트너가 현재 조회 필터 밖(다른 달)이어도 함께 로드된다.
+    transactions: Mapped[list["Transaction"]] = relationship(back_populates="link")
+
 
 class Transaction(Base):
     """수입/지출/이체 거래. 금액은 KRW 정수(원 단위), 항상 양수이며 kind로 방향을 구분.
@@ -117,6 +123,8 @@ class Transaction(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     date: Mapped[date_type] = mapped_column(Date, index=True)
+    # 거래 시각 — 엑셀 "시간" 컬럼에서 채운다. 수동/과거 거래는 미지정(NULL) 허용
+    time: Mapped[time_type | None] = mapped_column(Time, nullable=True)
     amount: Mapped[int] = mapped_column(BigInteger)
     kind: Mapped[str] = mapped_column(String(10))  # income | expense | transfer
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"))
@@ -141,7 +149,7 @@ class Transaction(Base):
     )
     counter_account: Mapped["Account | None"] = relationship(foreign_keys=[counter_account_id])
     member: Mapped["Member | None"] = relationship()
-    link: Mapped["TransactionLink | None"] = relationship()
+    link: Mapped["TransactionLink | None"] = relationship(back_populates="transactions")
 
 
 class AssetValuation(Base):

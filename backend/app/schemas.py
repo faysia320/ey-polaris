@@ -1,5 +1,6 @@
 from datetime import date as date_type
 from datetime import datetime
+from datetime import time as time_type
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -95,6 +96,7 @@ class CategoryOut(CategoryCreate):
 # ---------- Transaction ----------
 class TransactionCreate(BaseModel):
     date: date_type
+    time: time_type | None = Field(default=None, description="거래 시각 — 없으면 미지정")
     amount: int = Field(gt=0, description="KRW 정수(원). 항상 양수, 방향은 kind로 구분")
     kind: CategoryKind
     category_id: int
@@ -114,6 +116,21 @@ class TransactionUpdate(TransactionCreate):
 LinkType = Literal["transfer", "refund"]
 
 
+class TransactionLinkPartner(BaseModel):
+    """묶인 거래의 짝 다리 요약 — 병합 행 렌더(이체 출금→입금·환불 순지출)와
+    묶음 보기 모달이 짝이 현재 조회 필터 밖(다른 달)이어도 표시할 수 있도록 임베드한다.
+    """
+
+    id: int
+    date: date_type
+    time: time_type | None = None
+    kind: CategoryKind
+    amount: int
+    category_name: str
+    account_name: str
+    memo: str | None = None
+
+
 class TransactionOut(TransactionCreate):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -121,9 +138,11 @@ class TransactionOut(TransactionCreate):
     account_name: str
     counter_account_name: str | None = None
     member_name: str | None = None
-    # 사후 묶음 정보 — 묶이지 않았으면 둘 다 None
+    # 사후 묶음 정보 — 묶이지 않았으면 셋 다 None
     link_id: int | None = None
     link_type: LinkType | None = None
+    # 묶음의 짝 다리 요약 — 묶이지 않았거나 짝을 못 찾으면 None
+    linked_partner: TransactionLinkPartner | None = None
 
 
 class TransactionLinkCreate(BaseModel):

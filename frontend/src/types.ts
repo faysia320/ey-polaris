@@ -19,6 +19,18 @@ export type CategoryNature = 'fixed' | 'variable'
 /** 사후 묶음 유형 — transfer(계좌 간 이체) | refund(카드 결제+환불) */
 export type LinkType = 'transfer' | 'refund'
 
+/** 묶음의 짝 다리 요약 — 병합 행 렌더·묶음 보기 모달용. 짝이 현재 조회 필터 밖이어도 채워진다 */
+export interface TransactionLinkPartner {
+  id: number
+  date: string
+  time: string | null
+  kind: TransactionKind
+  amount: number
+  category_name: string
+  account_name: string
+  memo: string | null
+}
+
 export interface Member {
   id: number
   name: string
@@ -50,6 +62,8 @@ export interface Category {
 export interface Transaction {
   id: number
   date: string
+  /** 거래 시각 "HH:MM:SS" — 없으면 null */
+  time: string | null
   amount: number
   kind: TransactionKind
   category_id: number
@@ -66,10 +80,14 @@ export interface Transaction {
   link_id: number | null
   /** 묶음 유형 — 묶이지 않았으면 null */
   link_type: LinkType | null
+  /** 묶음의 짝 다리 요약 — 묶이지 않았거나 짝을 못 찾으면 null */
+  linked_partner: TransactionLinkPartner | null
 }
 
 export interface TransactionInput {
   date: string
+  /** 거래 시각 "HH:MM" 또는 "HH:MM:SS" — 미입력이면 null */
+  time: string | null
   amount: number
   kind: TransactionKind
   category_id: number

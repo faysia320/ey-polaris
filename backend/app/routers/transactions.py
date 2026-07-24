@@ -19,10 +19,31 @@ def _month_range(month: str) -> tuple[date, date]:
     return start, end
 
 
+def _partner_of(t: models.Transaction) -> schemas.TransactionLinkPartner | None:
+    """묶음의 짝 다리(자기 자신이 아닌 나머지 거래) 요약을 만든다. 묶이지 않았거나
+    짝을 못 찾으면(반쪽 묶음) None. 병합 행/묶음 보기가 짝 정보를 필요로 한다."""
+    if t.link is None:
+        return None
+    partner = next((x for x in t.link.transactions if x.id != t.id), None)
+    if partner is None:
+        return None
+    return schemas.TransactionLinkPartner(
+        id=partner.id,
+        date=partner.date,
+        time=partner.time,
+        kind=partner.kind,
+        amount=partner.amount,
+        category_name=partner.category.display_name,
+        account_name=partner.account.name,
+        memo=partner.memo,
+    )
+
+
 def _to_out(t: models.Transaction) -> schemas.TransactionOut:
     return schemas.TransactionOut(
         id=t.id,
         date=t.date,
+        time=t.time,
         amount=t.amount,
         kind=t.kind,
         category_id=t.category_id,
@@ -36,6 +57,7 @@ def _to_out(t: models.Transaction) -> schemas.TransactionOut:
         member_name=t.member.name if t.member else None,
         link_id=t.link_id,
         link_type=t.link.link_type if t.link else None,
+        linked_partner=_partner_of(t),
     )
 
 
@@ -105,6 +127,11 @@ def list_transactions(
     member_id: int | None = None,
     db: Session = Depends(get_db),
 ):
+    # 묶음의 짝 다리 요약(_partner_of)까지 한 번에 로드해 N+1을 피한다:
+    # link → transactions(짝 포함) → 각 거래의 account·category.
+    partner_leg = selectinload(models.Transaction.link).selectinload(
+        models.TransactionLink.transactions
+    )
     stmt = (
         select(models.Transaction)
         .options(
@@ -112,7 +139,8 @@ def list_transactions(
             selectinload(models.Transaction.account),
             selectinload(models.Transaction.counter_account),
             selectinload(models.Transaction.member),
-            selectinload(models.Transaction.link),
+            partner_leg.selectinload(models.Transaction.account),
+            partner_leg.selectinload(models.Transaction.category),
         )
         .where(*_filter_conditions(month, kind, category_id, major, account_id, member_id))
         .order_by(models.Transaction.date.desc(), models.Transaction.id.desc())
@@ -487,6 +515,7 @@ def import_transactions(
         db.add(
             models.Transaction(
                 date=row.date,
+                time=row.time,
                 amount=row.amount,
                 kind=row.kind,
                 category_id=category.id,
@@ -520,6 +549,7 @@ def import_transactions(
             db.add(
                 models.Transaction(
                     date=r.date,
+                    time=r.time,
                     amount=abs(r.amount),
                     kind=decision.action,
                     category_id=ensure_category(r.major, r.minor, decision.action).id,
@@ -574,6 +604,7 @@ def import_transactions(
         db.add(
             models.Transaction(
                 date=base.date,
+                time=base.time,
                 amount=abs(base.amount),
                 kind="transfer",
                 category_id=ensure_category(TRANSFER_MAJOR, minor, "transfer").id,
