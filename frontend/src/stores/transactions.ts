@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 import { api } from '@/lib/api'
-import { currentMonth } from '@/lib/format'
+import { previousMonth } from '@/lib/format'
 import type { LinkType, Transaction, TransactionInput, TransactionKind } from '@/types'
 
 export interface TransactionFilters {
@@ -44,7 +44,7 @@ interface TransactionState {
 
 export const useTransactionStore = create<TransactionState>((set, get) => ({
   items: [],
-  filters: { month: currentMonth(), kind: null, major: null, category_id: null, member_id: null },
+  filters: { month: previousMonth(), kind: null, major: null, category_id: null, member_id: null },
   loading: false,
 
   fetch: async () => {

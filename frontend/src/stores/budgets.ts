@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 import { api } from '@/lib/api'
-import { addMonths, currentMonth } from '@/lib/format'
+import { addMonths, previousMonth } from '@/lib/format'
 import type { Budget } from '@/types'
 
 interface BudgetState {
@@ -16,7 +16,7 @@ interface BudgetState {
 }
 
 export const useBudgetStore = create<BudgetState>((set, get) => ({
-  month: currentMonth(),
+  month: previousMonth(),
   items: [],
 
   fetch: async (month) => {

@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/lib/api'
-import { addMonths, currentMonth, formatKRW } from '@/lib/format'
+import { addMonths, previousMonth, formatKRW } from '@/lib/format'
 import { useAIReportStore } from '@/stores/aiReport'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { useMemberFilterStore } from '@/stores/memberFilter'
@@ -56,7 +56,7 @@ interface CategoryDetail {
 }
 
 export function DashboardPage() {
-  const [month, setMonth] = useState(currentMonth())
+  const [month, setMonth] = useState(previousMonth())
   const { dashboard, fetchDashboard } = useAnalyticsStore()
   const memberId = useMemberFilterStore((s) => s.memberId)
   const [error, setError] = useState<string | null>(null)

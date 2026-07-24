@@ -32,6 +32,11 @@ export function currentMonth(): string {
   return todayISO().slice(0, 7)
 }
 
+/** 오늘 기준 직전 월(YYYY-MM). 조회 화면들의 기본 선택 월로 사용한다. */
+export function previousMonth(): string {
+  return addMonths(currentMonth(), -1)
+}
+
 /** YYYY-MM 문자열에 delta개월을 더한다. */
 export function addMonths(month: string, delta: number): string {
   const year = Number(month.slice(0, 4))
