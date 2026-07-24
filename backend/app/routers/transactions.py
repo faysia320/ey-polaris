@@ -411,13 +411,14 @@ def _effective_liabilities(
 def preview_import(
     file: UploadFile = File(description="뱅크샐러드 내보내기 .xlsx 파일"),
     month: str = Form(pattern=schemas.YEAR_MONTH_PATTERN),
+    member_id: int = Form(description="업로드 대상 구성원 id — 계정 매칭 스코프(import와 동일)"),
     db: Session = Depends(get_db),
 ):
     """업로드 확정 전 미리보기 — DB를 변경하지 않는다.
 
     이체 타입 행을 검토 대상으로 반환한다. 행별 결정(decisions)과 함께
     POST /transactions/import 를 호출하면 확정된다. 평가액 미리보기는 실제 적재와
-    동일한 정책(_effective_valuations)으로 산출해 건수·목록이 결과와 일치한다.
+    동일한 정책(_effective_valuations)·동일 구성원 스코프로 산출해 건수·목록이 결과와 일치한다.
     """
     content = file.file.read()
     try:
@@ -426,7 +427,13 @@ def preview_import(
         raise HTTPException(status_code=422, detail=str(exc))
     if month_rows == 0:
         raise HTTPException(status_code=422, detail=f"{month}에 해당하는 가계부 내역이 없습니다")
-    accounts = {a.name: a for a in db.scalars(select(models.Account)).all()}
+    # import와 동일하게 업로드 구성원 소유 계정으로 스코프 — 평가액·부채 매칭 건수 파리티 유지.
+    accounts = {
+        a.name: a
+        for a in db.scalars(
+            select(models.Account).where(models.Account.member_id == member_id)
+        ).all()
+    }
     return schemas.ImportPreview(
         month=month,
         month_rows=month_rows,
@@ -513,7 +520,14 @@ def import_transactions(
     categories = {
         (c.major, c.minor, c.kind): c for c in db.scalars(select(models.Category)).all()
     }
-    accounts = {a.name: a for a in db.scalars(select(models.Account)).all()}
+    # 계정 매칭·생성은 업로드 지정 구성원 소유 계정으로만 스코프한다 — 이름이 겹칠 수 있으므로
+    # (name, member_id, type) 식별 하에 다른 구성원의 동명 계정에 잘못 붙지 않게 한다.
+    accounts = {
+        a.name: a
+        for a in db.scalars(
+            select(models.Account).where(models.Account.member_id == member_id)
+        ).all()
+    }
     created_categories: list[str] = []
     created_accounts: list[str] = []
 

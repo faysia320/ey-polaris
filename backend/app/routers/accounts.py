@@ -39,7 +39,7 @@ def create_account(payload: schemas.AccountCreate, db: Session = Depends(get_db)
     _validate_linked_account(db, payload, self_id=None)
     account = models.Account(**payload.model_dump())
     db.add(account)
-    commit_or_conflict(db, f"이미 존재하는 계정 이름입니다: {payload.name}")
+    commit_or_conflict(db, f"같은 소유자·유형의 계정 이름이 이미 있습니다: {payload.name}")
     return account
 
 
@@ -50,7 +50,7 @@ def update_account(account_id: int, payload: schemas.AccountUpdate, db: Session 
     _validate_linked_account(db, payload, self_id=account_id)
     for key, value in payload.model_dump().items():
         setattr(account, key, value)
-    commit_or_conflict(db, f"이미 존재하는 계정 이름입니다: {payload.name}")
+    commit_or_conflict(db, f"같은 소유자·유형의 계정 이름이 이미 있습니다: {payload.name}")
     return account
 
 

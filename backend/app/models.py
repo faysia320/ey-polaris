@@ -38,9 +38,14 @@ class Account(Base):
     """
 
     __tablename__ = "accounts"
+    # 이름은 그 자체로 유일 키가 아니다 — 시스템 키는 id(PK)이며, 이름 중복은
+    # 소유자(member_id)·유형(type)까지 모두 같을 때만 성립한다(다른 소유자/유형이면 동명 허용).
+    __table_args__ = (
+        UniqueConstraint("name", "member_id", "type", name="uq_accounts_name_member_type"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True)
+    name: Mapped[str] = mapped_column(String(100))
     # bank | cash | card | easy_pay | e_money | investment | stock | real_estate | deposit | loan | other
     # e_money(전자금융자산: 네이버페이·상품권 등 선불 충전형, 자체 잔액 보유)
     # deposit(보증금: 전세·임차 보증금 등 고정 금액 자산) | loan(대출: 부채 — 음수 잔액으로 총자산 차감)
