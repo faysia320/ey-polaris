@@ -1,4 +1,4 @@
-import type { TransactionKind } from '@/types'
+import type { AccountType, TransactionKind } from '@/types'
 
 const krw = new Intl.NumberFormat('ko-KR')
 
@@ -7,6 +7,25 @@ export const KIND_LABEL: Record<TransactionKind, string> = {
   income: '수입',
   expense: '지출',
   transfer: '이체',
+}
+
+/** 자산 계정 유형 목록 — 표시 순서까지 포함해 계정 선택 UI가 공유한다 */
+export const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
+  { value: 'bank', label: '은행' },
+  { value: 'cash', label: '현금' },
+  { value: 'card', label: '카드' },
+  { value: 'easy_pay', label: '간편결제' },
+  { value: 'e_money', label: '전자금융자산' },
+  { value: 'investment', label: '투자' },
+  { value: 'stock', label: '주식' },
+  { value: 'real_estate', label: '부동산' },
+  { value: 'deposit', label: '보증금' },
+  { value: 'other', label: '기타' },
+  { value: 'loan', label: '대출' },
+]
+
+export function accountTypeLabel(type: AccountType): string {
+  return ACCOUNT_TYPES.find((t) => t.value === type)?.label ?? type
 }
 
 /** 카테고리 표시명 — 소분류가 '미분류'면 대분류만 (백엔드 display_name과 동일 규칙). */

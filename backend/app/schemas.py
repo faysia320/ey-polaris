@@ -342,6 +342,80 @@ class ImportLiabilityRow(BaseModel):
     value: int = Field(ge=0, description="KRW 정수(원) 대출 원금 — 반영 시 음수로 차감")
 
 
+# 계정 소스 종류 — 엑셀에서 계정 이름이 등장하는 자리
+# ledger(가계부 내역의 결제수단) | valuation(뱅샐현황 부동산 상품명) | liability(부채 상품명)
+ImportSourceKind = Literal["ledger", "valuation", "liability"]
+
+# 소스별 사용자 결정 — link(기존 계정 연결) | create(새 계정 생성) | exclude(이번 업로드에서 제외)
+ImportMappingAction = Literal["link", "create", "exclude"]
+
+
+class ImportAccountSource(BaseModel):
+    """엑셀에 등장하는 자산 계정 소스 한 줄 (매핑 스텝 입력).
+
+    같은 이름이 결제수단이면서 부채 상품명일 수 있으므로 (kind, name)이 소스 식별자다.
+    """
+
+    kind: ImportSourceKind
+    name: str = Field(description="엑셀 표기명 (결제수단명 또는 상품명)")
+    matched_account_id: int | None = Field(
+        default=None, description="업로드 구성원 스코프에서 이름이 완전일치하는 기존 계정 id"
+    )
+    suggested_type: AccountType = Field(description="기본 제안 유형 (휴리스틱 또는 소스 종류 고정)")
+    row_count: int = Field(default=0, description="ledger 소스의 해당 월 엑셀 행 수 (검토 행 포함)")
+    importable_count: int = Field(
+        default=0, description="ledger 소스의 행 중 검토 없이 적재되는 수입/지출 행 수"
+    )
+    amount: int | None = Field(
+        default=None, description="valuation/liability 소스의 금액 (대출은 양수 원금)"
+    )
+
+
+class ImportAccountMapping(BaseModel):
+    """소스별 매핑 결정. link면 account_id, create면 type이 필요하다."""
+
+    kind: ImportSourceKind
+    name: str
+    action: ImportMappingAction
+    account_id: int | None = Field(default=None, description="link 전용 — 연결할 기존 계정 id")
+    type: AccountType | None = Field(default=None, description="create 전용 — 새 계정 유형")
+
+    @model_validator(mode="after")
+    def check_action(self) -> "ImportAccountMapping":
+        if self.action == "link" and self.account_id is None:
+            raise ValueError("기존 계정 연결에는 account_id가 필요합니다")
+        if self.action == "create":
+            if self.type is None:
+                raise ValueError("새 계정 생성에는 유형(type)이 필요합니다")
+            # 간편결제는 연결 계정(linked_account_id)이 필수라 업로드 마법사에서 만들지 않는다.
+            if self.type == "easy_pay":
+                raise ValueError(
+                    "간편결제 계정은 업로드에서 만들 수 없습니다 (설정에서 만든 뒤 연결해주세요)"
+                )
+        return self
+
+
+class ImportAccountMapRequest(BaseModel):
+    """매핑 확정 요청 — 계정을 실제로 생성·연결한다 (거래 적재 전 선행 단계)."""
+
+    member_id: int = Field(description="업로드 대상 구성원 id — 신규 계정 소유자·매칭 스코프")
+    mappings: list[ImportAccountMapping]
+
+
+class ImportAccountResolved(BaseModel):
+    """매핑 확정 결과 한 줄 — 제외면 account_id가 None이다."""
+
+    kind: ImportSourceKind
+    name: str
+    account_id: int | None = None
+    excluded: bool = False
+
+
+class ImportAccountMapResult(BaseModel):
+    resolved: list[ImportAccountResolved]
+    created_accounts: list[str] = Field(description="이번 확정으로 새로 만들어진 계정명")
+
+
 class ImportPreview(BaseModel):
     month: str
     month_rows: int = Field(description="해당 월 전체 행 수")
@@ -353,6 +427,9 @@ class ImportPreview(BaseModel):
     )
     liabilities: list[ImportLiabilityRow] = Field(
         default_factory=list, description="뱅샐현황에서 읽은 대출 잔액 (오늘 날짜로 반영 예정)"
+    )
+    account_sources: list[ImportAccountSource] = Field(
+        default_factory=list, description="엑셀에 등장하는 자산 계정 소스 (매핑 스텝 입력)"
     )
 
 

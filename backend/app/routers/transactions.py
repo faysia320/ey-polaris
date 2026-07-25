@@ -329,6 +329,8 @@ def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
 
 # 이체 검토 결정 JSON(multipart 문자열 필드) 파서
 _DECISIONS_ADAPTER = TypeAdapter(list[schemas.ImportDecision])
+# 자산 계정 매핑 결정 JSON(multipart 문자열 필드) 파서
+_MAPPINGS_ADAPTER = TypeAdapter(list[schemas.ImportAccountMapping])
 
 # 검토 행을 이체로 적재할 때의 카테고리(0006 시드 '이체' 대분류) 소분류 매핑 —
 # 시드에 있는 원본 대분류는 그대로, 그 외(이체/현금/미분류 등)는 '미분류'
@@ -407,6 +409,67 @@ def _effective_liabilities(
     return effective
 
 
+def _account_sources(
+    parsed: list[excel_import.ParsedRow],
+    review: list[excel_import.ReviewRow],
+    valuations: list[excel_import.ParsedValuation],
+    liabilities: list[excel_import.ParsedValuation],
+    accounts: dict[str, models.Account],
+) -> list[schemas.ImportAccountSource]:
+    """엑셀에 등장하는 자산 계정 소스를 매핑 스텝 입력 형태로 모은다.
+
+    ledger 소스는 결제수단명별 행 수를 세고(수입/지출 + 이체 검토 행), valuation/liability
+    소스는 이미 반영 대상으로 추려진 항목(_effective_*)의 상품명을 그대로 쓴다.
+    동명 계정이 있으면 그 계정을 기본 연결 대상·제안 유형으로 삼고, 없으면 휴리스틱
+    (ledger) 또는 소스 종류 고정 유형(valuation=real_estate, liability=loan)을 제안한다.
+    """
+    counts: dict[str, int] = {}
+    importable: dict[str, int] = {}  # 검토 없이 적재되는 수입/지출 행만 따로 — 제외 시 건수 차감용
+    for name in [r.account_name for r in parsed]:
+        counts[name] = counts.get(name, 0) + 1
+        importable[name] = importable.get(name, 0) + 1
+    for name in [r.account_name for r in review]:
+        counts[name] = counts.get(name, 0) + 1
+
+    sources: list[schemas.ImportAccountSource] = []
+
+    def add(
+        kind: str,
+        name: str,
+        fallback_type: str,
+        row_count: int,
+        importable_count: int,
+        amount: int | None,
+    ):
+        matched = accounts.get(name)
+        sources.append(
+            schemas.ImportAccountSource(
+                kind=kind,
+                name=name,
+                matched_account_id=matched.id if matched else None,
+                suggested_type=matched.type if matched else fallback_type,
+                row_count=row_count,
+                importable_count=importable_count,
+                amount=amount,
+            )
+        )
+
+    for name, count in counts.items():
+        add(
+            "ledger",
+            name,
+            excel_import.guess_account_type(name),
+            count,
+            importable.get(name, 0),
+            None,
+        )
+    for v in valuations:
+        add("valuation", v.product_name, v.account_type, 0, 0, v.value)
+    for v in liabilities:
+        add("liability", v.product_name, v.account_type, 0, 0, v.value)
+    return sources
+
+
 @router.post("/import/preview", response_model=schemas.ImportPreview)
 def preview_import(
     file: UploadFile = File(description="뱅크샐러드 내보내기 .xlsx 파일"),
@@ -434,6 +497,8 @@ def preview_import(
             select(models.Account).where(models.Account.member_id == member_id)
         ).all()
     }
+    effective_valuations = _effective_valuations(content, accounts)
+    effective_liabilities = _effective_liabilities(content, accounts)
     return schemas.ImportPreview(
         month=month,
         month_rows=month_rows,
@@ -457,13 +522,91 @@ def preview_import(
             schemas.ImportValuationRow(
                 product_name=v.product_name, account_type=v.account_type, value=v.value
             )
-            for v in _effective_valuations(content, accounts)
+            for v in effective_valuations
         ],
         liabilities=[
             schemas.ImportLiabilityRow(product_name=v.product_name, value=v.value)
-            for v in _effective_liabilities(content, accounts)
+            for v in effective_liabilities
         ],
+        account_sources=_account_sources(
+            parsed, review, effective_valuations, effective_liabilities, accounts
+        ),
     )
+
+
+# 소스 종류가 요구하는 계정 유형 — 부동산 평가액은 real_estate, 대출 잔액은 loan에만 붙는다.
+# ledger(결제수단)는 제약이 없어 사용자가 유형을 자유롭게 고른다.
+SOURCE_REQUIRED_TYPE = {"valuation": "real_estate", "liability": "loan"}
+
+
+@router.post("/import/accounts", response_model=schemas.ImportAccountMapResult)
+def resolve_import_accounts(
+    payload: schemas.ImportAccountMapRequest, db: Session = Depends(get_db)
+):
+    """매핑 스텝 확정 — 거래 적재 전에 자산 계정을 실제로 생성·연결한다.
+
+    - link: 지정 계정이 업로드 구성원 소유인지, 소스 종류가 요구하는 유형인지 검증한다.
+    - create: 구성원 소유로 새 계정을 만든다. 같은 (이름·소유자·유형) 계정이 이미 있으면
+      새로 만들지 않고 그 계정을 재사용한다(중복 확정 재시도 안전).
+    - exclude: 아무것도 만들지 않고 제외로 표시한다.
+
+    전 과정이 단일 트랜잭션이라 하나라도 실패하면 계정이 남지 않는다. 여기서 확정된
+    (kind, name) → 계정 id 매핑을 POST /transactions/import 의 account_mappings로 넘긴다.
+    """
+    get_or_404(db, models.Member, payload.member_id, "구성원")
+
+    resolved: list[schemas.ImportAccountResolved] = []
+    created_accounts: list[str] = []
+    for m in payload.mappings:
+        required_type = SOURCE_REQUIRED_TYPE.get(m.kind)
+        if m.action == "exclude":
+            resolved.append(
+                schemas.ImportAccountResolved(kind=m.kind, name=m.name, excluded=True)
+            )
+            continue
+
+        if m.action == "link":
+            account = get_or_404(db, models.Account, m.account_id, "자산 계정")
+            if account.member_id != payload.member_id:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"'{m.name}': 다른 구성원의 계정에는 연결할 수 없습니다",
+                )
+            if required_type and account.type != required_type:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"'{m.name}': 이 항목은 {required_type} 유형 계정에만 연결할 수 있습니다",
+                )
+        else:  # create
+            if required_type and m.type != required_type:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"'{m.name}': 이 항목은 {required_type} 유형으로만 만들 수 있습니다",
+                )
+            account = db.scalar(
+                select(models.Account).where(
+                    models.Account.name == m.name,
+                    models.Account.member_id == payload.member_id,
+                    models.Account.type == m.type,
+                )
+            )
+            if account is None:
+                account = models.Account(
+                    name=m.name,
+                    type=m.type,
+                    opening_balance=0,
+                    is_active=True,
+                    member_id=payload.member_id,
+                )
+                db.add(account)
+                db.flush()
+                created_accounts.append(account.name)
+        resolved.append(
+            schemas.ImportAccountResolved(kind=m.kind, name=m.name, account_id=account.id)
+        )
+
+    commit_or_conflict(db, "자산 계정 저장 중 무결성 오류가 발생했습니다")
+    return schemas.ImportAccountMapResult(resolved=resolved, created_accounts=created_accounts)
 
 
 @router.post("/import", response_model=schemas.ImportResult)
@@ -472,6 +615,9 @@ def import_transactions(
     month: str = Form(pattern=schemas.YEAR_MONTH_PATTERN),
     member_id: int = Form(description="업로드되는 모든 거래(및 자동 생성 계정)에 지정할 구성원 id"),
     decisions: str = Form(default="[]", description="이체 검토 행별 결정 JSON 배열"),
+    account_mappings: str = Form(
+        default="[]", description="자산 계정 소스별 매핑 결정 JSON 배열 (생략 시 이름 자동 매칭)"
+    ),
     db: Session = Depends(get_db),
 ):
     """엑셀 "가계부 내역" 시트에서 지정 월만 가져온다.
@@ -487,6 +633,10 @@ def import_transactions(
     이체 타입 행은 decisions의 행별 결정에 따라 수입/지출 전환·이체 적재·
     건너뛰기로 처리한다 (미리보기: POST /transactions/import/preview).
     결정이 없는 검토 행은 보수적으로 건너뛴다.
+
+    자산 계정은 account_mappings의 소스별 결정을 우선한다(연결/신규/제외 —
+    확정: POST /transactions/import/accounts). 매핑이 없는 소스는 종전대로
+    이름 일치로 찾고 없으면 추정 유형으로 자동 생성한다.
     """
     get_or_404(db, models.Member, member_id, "구성원")
     try:
@@ -494,6 +644,13 @@ def import_transactions(
     except ValidationError:
         raise HTTPException(status_code=422, detail="검토 결정(decisions) 형식이 올바르지 않습니다")
     decisions_by_row = {d.row: d for d in decision_list}
+    try:
+        mapping_list = _MAPPINGS_ADAPTER.validate_json(account_mappings)
+    except ValidationError:
+        raise HTTPException(
+            status_code=422, detail="계정 매핑(account_mappings) 형식이 올바르지 않습니다"
+        )
+    mappings_by_source = {(m.kind, m.name): m for m in mapping_list}
 
     content = file.file.read()
     try:
@@ -542,12 +699,13 @@ def import_transactions(
             created_categories.append(category.display_name)
         return category
 
-    def ensure_account(name: str) -> models.Account:
+    def ensure_named_account(name: str, account_type: str) -> models.Account:
+        """구성원 스코프에서 이름으로 찾고, 없으면 주어진 유형으로 만든다 (매핑 없을 때의 기본 동작)."""
         account = accounts.get(name)
         if account is None:
             account = models.Account(
                 name=name,
-                type=excel_import.guess_account_type(name),
+                type=account_type,
                 opening_balance=0,
                 is_active=True,
                 member_id=member_id,
@@ -558,9 +716,95 @@ def import_transactions(
             created_accounts.append(account.name)
         return account
 
+    # (kind, name) → 계정. None은 "이번 업로드에서 제외"를 뜻한다.
+    resolved_sources: dict[tuple[str, str], models.Account | None] = {}
+
+    def resolve_source(kind: str, name: str, fallback_type: str) -> models.Account | None:
+        """엑셀 소스명을 계정으로 해석한다. 매핑 결정이 있으면 그것을 따르고(제외면 None),
+        없으면 종전 동작(이름 일치 → 없으면 fallback_type으로 생성)으로 폴백한다."""
+        key = (kind, name)
+        if key in resolved_sources:
+            return resolved_sources[key]
+
+        mapping = mappings_by_source.get(key)
+        required_type = SOURCE_REQUIRED_TYPE.get(kind)
+        if mapping is None:
+            account = ensure_named_account(name, fallback_type)
+        elif mapping.action == "exclude":
+            account = None
+        elif mapping.action == "link":
+            account = db.get(models.Account, mapping.account_id)
+            if account is None or account.member_id != member_id:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"'{name}': 연결할 계정을 찾을 수 없습니다 (id={mapping.account_id})",
+                )
+            if required_type and account.type != required_type:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"'{name}': 이 항목은 {required_type} 유형 계정에만 연결할 수 있습니다",
+                )
+            accounts.setdefault(account.name, account)
+        else:  # create — 매핑 확정을 건너뛰고 바로 임포트한 경우에도 유형 지정을 존중한다
+            if required_type and mapping.type != required_type:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"'{name}': 이 항목은 {required_type} 유형으로만 만들 수 있습니다",
+                )
+            account = db.scalar(
+                select(models.Account).where(
+                    models.Account.name == name,
+                    models.Account.member_id == member_id,
+                    models.Account.type == mapping.type,
+                )
+            )
+            if account is None:
+                account = models.Account(
+                    name=name,
+                    type=mapping.type,
+                    opening_balance=0,
+                    is_active=True,
+                    member_id=member_id,
+                )
+                db.add(account)
+                db.flush()
+                created_accounts.append(account.name)
+            accounts.setdefault(name, account)
+
+        resolved_sources[key] = account
+        return account
+
+    def ensure_account(name: str) -> models.Account | None:
+        """결제수단명 → 계정 (제외 매핑이면 None). 매핑이 없으면 계정을 새로 만들 수 있으므로
+        실제로 거래를 적재하는 자리에서만 호출한다."""
+        return resolve_source("ledger", name, excel_import.guess_account_type(name))
+
+    def is_excluded(kind: str, name: str) -> bool:
+        """소스가 제외 매핑인지만 확인한다 — 계정을 만들지 않는 순수 검사.
+        건너뛸 행을 판정하는 자리에서 ensure_account를 쓰면 적재되지 않을 계정까지 생긴다."""
+        mapping = mappings_by_source.get((kind, name))
+        return mapping is not None and mapping.action == "exclude"
+
+    def excluded_reason(name: str) -> str:
+        return f"'{name}' 계정을 이번 업로드에서 제외함"
+
+    skipped_out = [schemas.ImportSkippedRow(row=s.row, reason=s.reason) for s in skipped]
+    skipped_rows = {s.row for s in skipped}
+    imported_count = 0
+
+    def add_skip(row: int, reason: str) -> None:
+        """건너뜀 사유를 행당 한 번만 기록한다 (페어 이체는 양쪽에서 도달할 수 있다)."""
+        if row in skipped_rows:
+            return
+        skipped_rows.add(row)
+        skipped_out.append(schemas.ImportSkippedRow(row=row, reason=reason))
+
     for row in parsed:
-        category = ensure_category(row.major, row.minor, row.kind)
         account = ensure_account(row.account_name)
+        if account is None:
+            add_skip(row.row, excluded_reason(row.account_name))
+            continue
+        category = ensure_category(row.major, row.minor, row.kind)
         db.add(
             models.Transaction(
                 date=row.date,
@@ -574,23 +818,46 @@ def import_transactions(
                 source="import",
             )
         )
+        imported_count += 1
 
     # 이체 검토 행 — 행별 결정 적용
     review_by_row = {r.row: r for r in review}
-    skipped_out = [schemas.ImportSkippedRow(row=s.row, reason=s.reason) for s in skipped]
     consumed: set[int] = set()  # 페어 이체로 함께 소비된 상대 행
     transfer_count = converted_count = 0
 
     for r in review:
         if r.row in consumed:
             continue
+        # 제외된 결제수단의 행은 어떤 결정이 왔든(또는 오지 않았든) 제외 사유로 건너뛴다 —
+        # 매핑 스텝에서 제외한 소스의 행은 화면에도 나오지 않으므로 결정이 비어 있을 수 있다.
+        # 자동 페어 상대가 제외된 경우도 이체가 성립하지 않으므로 두 다리를 함께 건너뛴다
+        # (결정 유무보다 먼저 판정해야 상대 결정이 없을 때 수동 이체 분기로 새지 않는다).
+        pair_row = review_by_row.get(r.pair_row) if r.pair_row else None
+        excluded_name = (
+            r.account_name
+            if is_excluded("ledger", r.account_name)
+            else pair_row.account_name
+            if pair_row is not None and is_excluded("ledger", pair_row.account_name)
+            else None
+        )
+        if excluded_name is not None:
+            add_skip(r.row, excluded_reason(excluded_name))
+            if pair_row is not None:
+                add_skip(pair_row.row, excluded_reason(excluded_name))
+                consumed.add(pair_row.row)
+            continue
         decision = decisions_by_row.get(r.row)
         if decision is None or decision.action == "skip":
             reason = "검토에서 건너뜀" if decision else "검토 결정 없음 — 건너뜀"
-            skipped_out.append(schemas.ImportSkippedRow(row=r.row, reason=reason))
+            add_skip(r.row, reason)
             continue
 
         if decision.action in ("income", "expense"):
+            # 계정 실체화는 실제로 적재하는 분기에서만 — 건너뛸 행의 계정을 만들지 않는다
+            own_account = ensure_account(r.account_name)
+            if own_account is None:  # 상단 제외 판정을 통과했으므로 도달하지 않는다 (방어)
+                add_skip(r.row, excluded_reason(r.account_name))
+                continue
             origin = r.major if r.minor == excel_import.UNCLASSIFIED else f"{r.major} > {r.minor}"
             label = "수입" if decision.action == "income" else "지출"
             trace = f"[이체→{label}: {origin}]"
@@ -602,7 +869,7 @@ def import_transactions(
                     amount=abs(r.amount),
                     kind=decision.action,
                     category_id=ensure_category(r.major, r.minor, decision.action).id,
-                    account_id=ensure_account(r.account_name).id,
+                    account_id=own_account.id,
                     member_id=member_id,
                     memo=memo[: excel_import.MEMO_MAX],
                     source="import",
@@ -611,8 +878,8 @@ def import_transactions(
             converted_count += 1
             continue
 
-        # action == "transfer"
-        pair = review_by_row.get(r.pair_row) if r.pair_row else None
+        # action == "transfer" — 페어 상대(pair_row)는 위에서 이미 조회했다
+        pair = pair_row
         pair_decision = decisions_by_row.get(pair.row) if pair else None
         pair_is_auto = (
             pair is not None
@@ -626,6 +893,24 @@ def import_transactions(
             out_leg, in_leg = (r, pair) if r.amount < 0 else (pair, r)
             from_account = ensure_account(out_leg.account_name)
             to_account = ensure_account(in_leg.account_name)
+            # 제외된 다리는 상단 판정에서 이미 걸러졌으므로 도달하지 않는다 (방어)
+            if from_account is None or to_account is None:
+                skipped_name = out_leg.account_name if from_account is None else in_leg.account_name
+                for leg in (r, pair):
+                    add_skip(leg.row, excluded_reason(skipped_name))
+                consumed.add(pair.row)
+                continue
+            # 두 결제수단을 같은 계정에 매핑했다면 계정 간 이동이 아니므로 이체로 기록하지 않는다
+            # (수동 상대 계정 지정은 사용자가 직접 고른 오류라 422로 막지만, 여기서는 매핑의
+            #  부수 효과이므로 두 다리를 건너뛰고 사유를 남긴다)
+            if from_account.id == to_account.id:
+                for leg in (r, pair):
+                    add_skip(
+                        leg.row,
+                        f"출금·입금이 같은 계정('{from_account.name}')이라 이체로 기록하지 않음",
+                    )
+                consumed.add(pair.row)
+                continue
             consumed.add(pair.row)
             base = out_leg
         else:
@@ -640,14 +925,20 @@ def import_transactions(
                     status_code=422,
                     detail=f"{r.row}행: 상대 계정을 찾을 수 없습니다 (id={decision.counter_account_id})",
                 )
-            own = ensure_account(r.account_name)
-            if counter.id == own.id:
+            # 계정 실체화는 실제로 적재하는 이 자리에서 (상단 제외 판정을 통과한 행만 도달)
+            own_account = ensure_account(r.account_name)
+            if own_account is None:  # 도달하지 않는다 (방어)
+                add_skip(r.row, excluded_reason(r.account_name))
+                continue
+            if counter.id == own_account.id:
                 raise HTTPException(
                     status_code=422,
                     detail=f"{r.row}행: 상대 계정이 결제수단 계정과 같을 수 없습니다",
                 )
             # 부호가 방향을 정한다 — 음수면 결제수단에서 출금, 양수면 입금
-            from_account, to_account = (own, counter) if r.amount < 0 else (counter, own)
+            from_account, to_account = (
+                (own_account, counter) if r.amount < 0 else (counter, own_account)
+            )
             base = r
         minor = r.major if r.major in TRANSFER_MINOR_MAJORS else excel_import.UNCLASSIFIED
         db.add(
@@ -669,23 +960,14 @@ def import_transactions(
     # 자산 평가액 — 뱅샐현황 자산 표의 부동산 평가액을 오늘 날짜로 반영한다(선택 월과 무관).
     # 주식은 보유 총합을 자산 페이지에서 직접 입력하므로 엑셀 반영 대상이 아니다.
     # 반영 대상은 미리보기와 동일한 정책(_effective_valuations)으로 추린다: 상품명 dedupe,
-    # 0원 신규 미생성, 동명 비부동산 계정 제외. 남은 항목은 매칭 계정에 upsert하거나 신규 생성한다.
+    # 0원 신규 미생성, 동명 비부동산 계정 제외. 남은 항목은 매핑 결정(연결/신규/제외)을 따르며,
+    # 매핑이 없으면 종전대로 동명 계정에 upsert하거나 신규 생성한다.
     valuation_date = date.today()
     valuation_count = 0
     for v in _effective_valuations(content, accounts):
-        account = accounts.get(v.product_name)
+        account = resolve_source("valuation", v.product_name, v.account_type)
         if account is None:
-            account = models.Account(
-                name=v.product_name,
-                type=v.account_type,
-                opening_balance=0,
-                is_active=True,
-                member_id=member_id,
-            )
-            db.add(account)
-            db.flush()
-            accounts[v.product_name] = account
-            created_accounts.append(account.name)
+            continue  # 매핑에서 제외한 항목 — 계정도 평가액도 만들지 않는다
         existing = db.scalar(
             select(models.AssetValuation).where(
                 models.AssetValuation.account_id == account.id,
@@ -701,23 +983,14 @@ def import_transactions(
         valuation_count += 1
 
     # 대출 잔액 — 뱅샐현황 부채 표의 대출을 오늘 날짜 평가액으로 반영한다(선택 월과 무관).
-    # 대출은 부채이므로 value를 음수(-대출원금)로 기록해 총자산에서 차감한다. 계정 없으면
-    # loan 유형으로 생성하고, 동명 비대출 계정은 _effective_liabilities에서 이미 제외된다.
+    # 대출은 부채이므로 value를 음수(-대출원금)로 기록해 총자산에서 차감한다. 매핑 결정을
+    # 따르되(제외면 미반영) 매핑이 없으면 loan 유형으로 생성하고, 동명 비대출 계정은
+    # _effective_liabilities에서 이미 제외된다.
     loan_count = 0
     for v in _effective_liabilities(content, accounts):
-        account = accounts.get(v.product_name)
+        account = resolve_source("liability", v.product_name, v.account_type)
         if account is None:
-            account = models.Account(
-                name=v.product_name,
-                type=v.account_type,  # loan
-                opening_balance=0,
-                is_active=True,
-                member_id=member_id,
-            )
-            db.add(account)
-            db.flush()
-            accounts[v.product_name] = account
-            created_accounts.append(account.name)
+            continue  # 매핑에서 제외한 항목 — 계정도 잔액도 만들지 않는다
         signed_value = -v.value  # 부채 — 음수 평가액으로 총자산 차감
         existing = db.scalar(
             select(models.AssetValuation).where(
@@ -739,7 +1012,7 @@ def import_transactions(
     return schemas.ImportResult(
         month=month,
         deleted_count=deleted,
-        created_count=len(parsed) + converted_count + transfer_count,
+        created_count=imported_count + converted_count + transfer_count,
         transfer_count=transfer_count,
         converted_count=converted_count,
         skipped=skipped_out,

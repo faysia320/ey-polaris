@@ -224,6 +224,51 @@ export interface ImportLiabilityRow {
   value: number
 }
 
+/** 계정 이름이 엑셀에서 등장하는 자리 — 결제수단 | 부동산 상품명 | 대출 상품명 */
+export type ImportSourceKind = 'ledger' | 'valuation' | 'liability'
+/** 소스별 사용자 결정 — 기존 계정 연결 | 새 계정 생성 | 이번 업로드에서 제외 */
+export type ImportMappingAction = 'link' | 'create' | 'exclude'
+
+/** 매핑 스텝 입력 — (kind, name)이 소스 식별자 */
+export interface ImportAccountSource {
+  kind: ImportSourceKind
+  /** 엑셀 표기명 (결제수단명 또는 상품명) */
+  name: string
+  /** 업로드 구성원 스코프에서 이름이 완전일치하는 기존 계정 id */
+  matched_account_id: number | null
+  suggested_type: AccountType
+  /** ledger 소스의 해당 월 엑셀 행 수 (검토 행 포함) */
+  row_count: number
+  /** ledger 소스의 행 중 검토 없이 적재되는 수입/지출 행 수 */
+  importable_count: number
+  /** valuation/liability 소스의 금액 (대출은 양수 원금) */
+  amount: number | null
+}
+
+export interface ImportAccountMapping {
+  kind: ImportSourceKind
+  name: string
+  action: ImportMappingAction
+  /** link 전용 — 연결할 기존 계정 id */
+  account_id?: number | null
+  /** create 전용 — 새 계정 유형 */
+  type?: AccountType | null
+}
+
+export interface ImportAccountResolved {
+  kind: ImportSourceKind
+  name: string
+  /** 제외면 null */
+  account_id: number | null
+  excluded: boolean
+}
+
+export interface ImportAccountMapResult {
+  resolved: ImportAccountResolved[]
+  /** 이번 확정으로 새로 만들어진 계정명 */
+  created_accounts: string[]
+}
+
 export interface ImportPreview {
   month: string
   month_rows: number
@@ -233,6 +278,8 @@ export interface ImportPreview {
   skipped: ImportSkippedRow[]
   valuations: ImportValuationRow[]
   liabilities: ImportLiabilityRow[]
+  /** 엑셀에 등장하는 자산 계정 소스 (매핑 스텝 입력) */
+  account_sources: ImportAccountSource[]
 }
 
 export interface ImportDecision {

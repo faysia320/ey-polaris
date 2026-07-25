@@ -28,25 +28,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { formatKRW, KIND_LABEL } from '@/lib/format'
+import { ACCOUNT_TYPES, accountTypeLabel, formatKRW, KIND_LABEL } from '@/lib/format'
 import { touchTarget } from '@/lib/utils'
 import { useAISettingsStore } from '@/stores/aiSettings'
 import { useMasterDataStore } from '@/stores/masterData'
 import type { Account, AccountType, Category, CategoryNature, Member, TransactionKind } from '@/types'
-
-const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
-  { value: 'bank', label: '은행' },
-  { value: 'cash', label: '현금' },
-  { value: 'card', label: '카드' },
-  { value: 'easy_pay', label: '간편결제' },
-  { value: 'e_money', label: '전자금융자산' },
-  { value: 'investment', label: '투자' },
-  { value: 'stock', label: '주식' },
-  { value: 'real_estate', label: '부동산' },
-  { value: 'deposit', label: '보증금' },
-  { value: 'other', label: '기타' },
-  { value: 'loan', label: '대출' },
-]
 
 /** 간편결제 계정이 연결할 수 있는 실물 자산 유형 — 백엔드 LINKABLE_TYPES와 일치 */
 const LINKABLE_TYPES: AccountType[] = ['card', 'bank']
@@ -374,7 +360,7 @@ function AccountsTab() {
               <TableRow key={a.id}>
                 <TableCell>{a.name}</TableCell>
                 <TableCell>
-                  {ACCOUNT_TYPES.find((t) => t.value === a.type)?.label}
+                  {accountTypeLabel(a.type)}
                   {a.type === 'easy_pay' && a.linked_account_id && (
                     <span className="text-xs text-muted-foreground">
                       {' '}

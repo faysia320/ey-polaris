@@ -56,15 +56,32 @@ import {
 import { MemberFilterSelect } from '@/components/members/MemberFilterSelect'
 import { TransactionCalendar } from '@/components/transactions/TransactionCalendar'
 import { api } from '@/lib/api'
-import { addMonths, categoryLabel, currentMonth, formatKRW, formatNumber, KIND_LABEL, todayISO } from '@/lib/format'
+import {
+  ACCOUNT_TYPES,
+  accountTypeLabel,
+  addMonths,
+  categoryLabel,
+  currentMonth,
+  formatKRW,
+  formatNumber,
+  KIND_LABEL,
+  todayISO,
+} from '@/lib/format'
 import { cn, touchTarget } from '@/lib/utils'
 import { useMasterDataStore } from '@/stores/masterData'
 import { useMemberFilterStore } from '@/stores/memberFilter'
 import { useTransactionStore } from '@/stores/transactions'
 import type {
+  AccountType,
+  ImportAccountMapping,
+  ImportAccountMapResult,
+  ImportAccountSource,
   ImportAction,
+  ImportMappingAction,
   ImportPreview,
   ImportResult,
+  ImportReviewRow,
+  ImportSourceKind,
   LinkType,
   Transaction,
   TransactionKind,
@@ -110,6 +127,33 @@ const KIND_BADGE_CLASS: Record<TransactionKind, string> = {
 /** 엑셀 평가액 반영 시 자산 유형 라벨 — 주식은 총합 직접 입력이라 엑셀 반영 대상이 아니다 */
 const VALUATION_TYPE_LABEL: Record<'real_estate', string> = {
   real_estate: '부동산',
+}
+
+/** 계정 매핑 스텝 — 소스가 엑셀 어디에서 왔는지 */
+const SOURCE_KIND_LABEL: Record<ImportSourceKind, string> = {
+  ledger: '결제수단',
+  valuation: '부동산',
+  liability: '대출',
+}
+
+/** 소스 종류가 강제하는 계정 유형 — 백엔드 SOURCE_REQUIRED_TYPE와 일치. ledger는 자유 선택 */
+const SOURCE_REQUIRED_TYPE: Partial<Record<ImportSourceKind, AccountType>> = {
+  valuation: 'real_estate',
+  liability: 'loan',
+}
+
+/** 매핑 스텝에서 새로 만들 수 있는 유형 — 간편결제는 연결 계정이 필수라 설정 화면에서만 만든다 */
+const CREATABLE_ACCOUNT_TYPES = ACCOUNT_TYPES.filter((t) => t.value !== 'easy_pay')
+
+/** 소스 식별자 — 같은 이름이 결제수단이면서 상품명일 수 있어 종류까지 포함한다 */
+const sourceKey = (s: { kind: ImportSourceKind; name: string }) => `${s.kind}|${s.name}`
+
+interface MappingChoice {
+  action: ImportMappingAction
+  /** link 전용 — Select 값이라 문자열로 보관 */
+  account_id: string
+  /** create 전용 */
+  type: AccountType
 }
 
 /** 사후 묶음 유형 라벨 — transfer(계좌 간 이체) | refund(카드 결제+환불) */
@@ -230,11 +274,19 @@ export function TransactionsPage() {
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  // 업로드 스텝 — 입력(form) → 자산계정 매핑(accounts) → 이체 검토(review) → 결과(importResult)
+  const [importStep, setImportStep] = useState<'form' | 'accounts' | 'review'>('form')
   // 이체 검토 단계 — 미리보기 결과와 행별 결정 (행번호 → 결정)
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
   const [reviewDecisions, setReviewDecisions] = useState<
     Record<number, { action: ImportAction; counter_account_id: string }>
   >({})
+  // 자산계정 매핑 단계 — 소스키(`kind|name`) → 사용자 선택
+  const [mappingChoices, setMappingChoices] = useState<Record<string, MappingChoice>>({})
+  // 매핑 확정 결과 — 최종 가져오기 요청에 그대로 실어 보낸다 (연결 또는 제외)
+  const [resolvedMappings, setResolvedMappings] = useState<ImportAccountMapping[]>([])
+  // 매핑 확정으로 만들어진 계정명 — 결과 화면에서 임포트가 만든 계정과 합쳐 보여준다
+  const [mappingCreatedAccounts, setMappingCreatedAccounts] = useState<string[]>([])
 
   // 전역 구성원 필터를 거래 필터에 동기화 — 마운트 시 조회를 겸한다 (setFilters가 fetch 포함)
   useEffect(() => {
@@ -555,9 +607,10 @@ export function TransactionsPage() {
     (c) => c.major === filters.major && (!filters.kind || c.kind === filters.kind),
   )
 
-  const commitImport = async (preview: ImportPreview | null) => {
+  /** rows: 화면에 실제로 표시한 검토 행만 — 서버도 제외 행은 결정 없이 건너뛴다 */
+  const commitImport = async (rows: ImportReviewRow[], mappings: ImportAccountMapping[]) => {
     if (!importFile) return
-    const decisions = (preview?.review ?? []).map((r) => {
+    const decisions = rows.map((r) => {
       const d = reviewDecisions[r.row]
       return {
         row: r.row,
@@ -570,6 +623,8 @@ export function TransactionsPage() {
     body.append('month', importMonth)
     body.append('member_id', importMemberId)
     body.append('decisions', JSON.stringify(decisions))
+    // 매핑 스텝에서 확정한 계정(연결/제외)을 그대로 전달 — 서버가 이름 재매칭을 하지 않게 한다
+    body.append('account_mappings', JSON.stringify(mappings))
     const result = await api.upload<ImportResult>('/transactions/import', body)
     setImportResult(result)
     setImportPreview(null)
@@ -577,7 +632,7 @@ export function TransactionsPage() {
     await Promise.all([fetch(), fetchAll()])
   }
 
-  // 1단계: 미리보기 — 검토할 이체 행도, 확인할 평가액도 없으면 곧바로 확정까지 진행한다
+  // 1단계: 미리보기 → 자산계정 매핑 스텝 진입 (계정 소스가 하나도 없을 때만 건너뛴다)
   const runImport = async () => {
     if (!importFile) return setImportError('업로드할 .xlsx 파일을 선택해주세요')
     if (!importMonth) return setImportError('가져올 월을 선택해주세요')
@@ -591,21 +646,136 @@ export function TransactionsPage() {
       // 미리보기도 계정 매칭을 업로드 구성원으로 스코프한다 — 확정 결과와 평가액 건수 파리티 유지
       body.append('member_id', importMemberId)
       const preview = await api.upload<ImportPreview>('/transactions/import/preview', body)
-      if (
-        preview.review.length === 0 &&
-        preview.valuations.length === 0 &&
-        preview.liabilities.length === 0
-      ) {
-        await commitImport(preview)
-      } else {
-        // 기본 제안으로 결정 초기화 후 검토 단계 진입
-        const initial: Record<number, { action: ImportAction; counter_account_id: string }> = {}
-        for (const r of preview.review) {
-          initial[r.row] = { action: r.suggested, counter_account_id: '' }
-        }
-        setReviewDecisions(initial)
-        setImportPreview(preview)
+      // 이체 검토 결정은 기본 제안으로 초기화해 둔다 (매핑 확정 후 검토 스텝에서 사용)
+      const decisions: Record<number, { action: ImportAction; counter_account_id: string }> = {}
+      for (const r of preview.review) {
+        decisions[r.row] = { action: r.suggested, counter_account_id: '' }
       }
+      setReviewDecisions(decisions)
+      setImportPreview(preview)
+
+      if (preview.account_sources.length === 0) {
+        // 매핑할 계정이 없다 — 검토/확인할 것도 없으면 곧바로 확정
+        if (
+          preview.review.length === 0 &&
+          preview.valuations.length === 0 &&
+          preview.liabilities.length === 0
+        ) {
+          await commitImport(preview.review, [])
+        } else {
+          setResolvedMappings([])
+          setImportStep('review')
+        }
+        return
+      }
+
+      // 매핑 기본값 — 동명 계정이 있으면 연결, 없으면 추정 유형으로 새로 만들기
+      const choices: Record<string, MappingChoice> = {}
+      for (const s of preview.account_sources) {
+        choices[sourceKey(s)] = s.matched_account_id
+          ? { action: 'link', account_id: String(s.matched_account_id), type: s.suggested_type }
+          : { action: 'create', account_id: '', type: s.suggested_type }
+      }
+      setMappingChoices(choices)
+      setImportStep('accounts')
+    } catch (e) {
+      setImportError((e as Error).message)
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  // 결과 화면의 "새 자산 계정" — 매핑 스텝에서 만든 계정과 임포트가 만든 계정을 합쳐 보여준다
+  const importCreatedAccounts = [
+    ...new Set([...mappingCreatedAccounts, ...(importResult?.created_accounts ?? [])]),
+  ]
+
+  // 검토 스텝은 매핑에서 제외한 소스를 빼고 보여준다 — 실제로 등록되지 않을 항목을
+  // "반영될" 대상으로 표시하면 같은 화면의 제외 안내와 모순된다
+  const excludedSourceKeys = new Set(
+    resolvedMappings.filter((m) => m.action === 'exclude').map((m) => `${m.kind}|${m.name}`),
+  )
+  const previewValuations = (importPreview?.valuations ?? []).filter(
+    (v) => !excludedSourceKeys.has(`valuation|${v.product_name}`),
+  )
+  const previewLiabilities = (importPreview?.liabilities ?? []).filter(
+    (v) => !excludedSourceKeys.has(`liability|${v.product_name}`),
+  )
+  // 자동 페어는 한쪽 다리만 제외돼도 서버가 두 다리를 함께 건너뛴다 — 화면에서도 같이 감춘다
+  // (남겨두면 상대 계정명이 빈 "자동 페어 ↔ (N행)"으로 보이고 이체 건수도 실제와 어긋난다)
+  const isLedgerExcluded = (accountName: string) =>
+    excludedSourceKeys.has(`ledger|${accountName}`)
+  const previewReview = (importPreview?.review ?? []).filter((r) => {
+    if (isLedgerExcluded(r.account_name)) return false
+    const pair = r.pair_row
+      ? importPreview?.review.find((p) => p.row === r.pair_row)
+      : undefined
+    return !(pair && isLedgerExcluded(pair.account_name))
+  })
+  const previewImportableCount =
+    (importPreview?.importable_count ?? 0) -
+    (importPreview?.account_sources ?? [])
+      .filter((s) => s.kind === 'ledger' && excludedSourceKeys.has(sourceKey(s)))
+      .reduce((sum, s) => sum + s.importable_count, 0)
+
+  /** 소스에 연결할 수 있는 계정 후보 — 업로드 구성원 소유 + 소스가 요구하는 유형.
+   *  비활성 계정도 후보에 남긴다: preview의 완전일치(matched_account_id)는 활성 여부를 가리지
+   *  않으므로, 여기서 걸러내면 기본 선택값이 목록에 없어 빈 칸으로 보이게 된다(라벨로 구분). */
+  const mappingCandidates = (source: ImportAccountSource) => {
+    const required = SOURCE_REQUIRED_TYPE[source.kind]
+    return accounts.filter(
+      (a) => a.member_id === Number(importMemberId) && (!required || a.type === required),
+    )
+  }
+
+  // 2단계: 자산계정 매핑 확정 — 여기서 계정이 실제로 만들어진다
+  const confirmAccounts = async () => {
+    if (!importPreview) return
+    const sources = importPreview.account_sources
+    for (const s of sources) {
+      const choice = mappingChoices[sourceKey(s)]
+      if (choice?.action !== 'link') continue
+      if (!choice.account_id) {
+        return setImportError(`'${s.name}': 연결할 계정을 선택해주세요`)
+      }
+      // 고른 계정이 후보에 없으면(유형·소유자 변경 등) 화면에 표시되지 않으므로 그대로 넘기지 않는다
+      if (!mappingCandidates(s).some((a) => String(a.id) === choice.account_id)) {
+        return setImportError(`'${s.name}': 연결할 계정을 다시 선택해주세요`)
+      }
+    }
+    setImporting(true)
+    setImportError(null)
+    try {
+      const mappings: ImportAccountMapping[] = sources.map((s) => {
+        const choice = mappingChoices[sourceKey(s)]
+        if (choice.action === 'exclude') return { kind: s.kind, name: s.name, action: 'exclude' }
+        if (choice.action === 'link') {
+          return {
+            kind: s.kind,
+            name: s.name,
+            action: 'link',
+            account_id: Number(choice.account_id),
+          }
+        }
+        return { kind: s.kind, name: s.name, action: 'create', type: choice.type }
+      })
+      const result = await api.post<ImportAccountMapResult>('/transactions/import/accounts', {
+        member_id: Number(importMemberId),
+        mappings,
+      })
+      // 확정 결과를 최종 요청용 매핑(연결/제외)으로 굳힌다 — 이름 재매칭 없이 계정 id로 적재
+      setResolvedMappings(
+        result.resolved.map((r) =>
+          r.excluded
+            ? { kind: r.kind, name: r.name, action: 'exclude' }
+            : { kind: r.kind, name: r.name, action: 'link', account_id: r.account_id },
+        ),
+      )
+      // 매핑 스텝을 오가며 여러 번 확정할 수 있으므로 생성 이력은 누적한다
+      setMappingCreatedAccounts((prev) => [...new Set([...prev, ...result.created_accounts])])
+      // 새로 만든 계정을 이체 상대 계정 드롭다운에서 바로 고를 수 있게 기준정보 재조회
+      await fetchAll()
+      setImportStep('review')
     } catch (e) {
       setImportError((e as Error).message)
     } finally {
@@ -626,10 +796,11 @@ export function TransactionsPage() {
     )
   }
 
-  // 2단계: 검토 확정
+  // 3단계: 검토 확정 — 확정된 계정 매핑과 함께 실제 적재
   const confirmReview = async () => {
     if (!importPreview) return
-    for (const r of importPreview.review) {
+    // 제외한 소스의 행은 화면에도 없고 등록되지도 않으므로 상대 계정 검증 대상이 아니다
+    for (const r of previewReview) {
       const d = reviewDecisions[r.row]
       if (d?.action === 'transfer' && !isPairAuto(r.row, r.pair_row) && !d.counter_account_id) {
         return setImportError(`${r.row}행: 이체로 처리하려면 상대 계정을 선택해주세요`)
@@ -638,7 +809,7 @@ export function TransactionsPage() {
     setImporting(true)
     setImportError(null)
     try {
-      await commitImport(importPreview)
+      await commitImport(previewReview, resolvedMappings)
     } catch (e) {
       setImportError((e as Error).message)
     } finally {
@@ -654,6 +825,10 @@ export function TransactionsPage() {
     setImportResult(null)
     setImportPreview(null)
     setReviewDecisions({})
+    setImportStep('form')
+    setMappingChoices({})
+    setResolvedMappings([])
+    setMappingCreatedAccounts([])
     setImportOpen(true)
   }
 
@@ -1410,18 +1585,26 @@ export function TransactionsPage() {
         >
           <DialogHeader>
             <DialogTitle>
-              {importPreview && !importResult
-                ? importPreview.review.length > 0
-                  ? '이체 내역 검토'
-                  : '업로드 내용 확인'
-                : '엑셀 업로드'}
+              {importResult
+                ? '엑셀 업로드'
+                : importStep === 'accounts'
+                  ? '자산 계정 매핑 (1/2)'
+                  : importStep === 'review'
+                    ? previewReview.length > 0
+                      ? '이체 내역 검토 (2/2)'
+                      : '업로드 내용 확인 (2/2)'
+                    : '엑셀 업로드'}
             </DialogTitle>
             <DialogDescription>
-              {importPreview && !importResult
-                ? importPreview.review.length > 0
-                  ? '이체 타입 행은 자동 반영되지 않아요. 행마다 처리 방법을 정해주세요.'
-                  : '아래 내용으로 가져올게요. 확인 후 진행해주세요.'
-                : '뱅크샐러드 내보내기 파일의 "가계부 내역"에서 선택한 달만 가져옵니다.'}
+              {importResult
+                ? '뱅크샐러드 내보내기 파일의 "가계부 내역"에서 선택한 달만 가져옵니다.'
+                : importStep === 'accounts'
+                  ? '엑셀에 등장하는 계정을 먼저 정리해요. 기존 계정에 연결하거나, 새로 만들거나, 이번엔 제외할 수 있어요.'
+                  : importStep === 'review'
+                    ? previewReview.length > 0
+                      ? '이체 타입 행은 자동 반영되지 않아요. 행마다 처리 방법을 정해주세요.'
+                      : '아래 내용으로 가져올게요. 확인 후 진행해주세요.'
+                    : '뱅크샐러드 내보내기 파일의 "가계부 내역"에서 선택한 달만 가져옵니다.'}
             </DialogDescription>
           </DialogHeader>
           {/* pr-3: 스크롤바가 Root 우측에 겹쳐 그려지므로 콘텐츠와 겹치지 않게 여백 확보 */}
@@ -1442,9 +1625,9 @@ export function TransactionsPage() {
                   새 카테고리: {importResult.created_categories.join(', ')}
                 </p>
               )}
-              {importResult.created_accounts.length > 0 && (
+              {importCreatedAccounts.length > 0 && (
                 <p className="text-muted-foreground">
-                  새 자산 계정: {importResult.created_accounts.join(', ')}
+                  새 자산 계정: {importCreatedAccounts.join(', ')}
                 </p>
               )}
               {importResult.valuation_count > 0 && (
@@ -1468,26 +1651,157 @@ export function TransactionsPage() {
                 </div>
               )}
             </div>
+          ) : importPreview && importStep === 'accounts' ? (
+            <div className="space-y-3 text-sm">
+              <p className="text-xs text-muted-foreground">
+                엑셀에 나온 계정 {importPreview.account_sources.length}개예요. 여기서 확정하면
+                계정이 바로 만들어져요 (업로드를 취소해도 계정은 남고, 설정에서 지울 수 있어요).
+              </p>
+              <div className="space-y-2">
+                {importPreview.account_sources.map((s) => {
+                  const key = sourceKey(s)
+                  const choice = mappingChoices[key]
+                  const candidates = mappingCandidates(s)
+                  const requiredType = SOURCE_REQUIRED_TYPE[s.kind]
+                  return (
+                    <div key={key} className="space-y-2 rounded-md border p-2">
+                      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                        <span className="flex min-w-0 items-center gap-1">
+                          <Badge variant="secondary">{SOURCE_KIND_LABEL[s.kind]}</Badge>
+                          <span className="truncate font-medium">{s.name}</span>
+                        </span>
+                        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                          {s.kind === 'ledger'
+                            ? `${s.row_count}건`
+                            : s.amount !== null
+                              ? `${s.kind === 'liability' ? '-' : ''}${formatKRW(s.amount)}`
+                              : ''}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Select
+                          value={choice?.action ?? 'create'}
+                          onValueChange={(v) =>
+                            setMappingChoices((prev) => ({
+                              ...prev,
+                              [key]: {
+                                ...prev[key],
+                                action: v as ImportMappingAction,
+                                account_id:
+                                  v === 'link'
+                                    ? (prev[key]?.account_id ??
+                                      (s.matched_account_id ? String(s.matched_account_id) : ''))
+                                    : '',
+                              },
+                            }))
+                          }
+                        >
+                          <SelectTrigger className="w-32">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="link" disabled={candidates.length === 0}>
+                              기존 계정 연결
+                            </SelectItem>
+                            <SelectItem value="create">새로 만들기</SelectItem>
+                            <SelectItem value="exclude">이번엔 제외</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {choice?.action === 'link' && (
+                          <Select
+                            value={choice.account_id || undefined}
+                            onValueChange={(v) =>
+                              setMappingChoices((prev) => ({
+                                ...prev,
+                                [key]: { ...prev[key], account_id: v },
+                              }))
+                            }
+                          >
+                            <SelectTrigger className="w-44">
+                              <SelectValue placeholder="연결할 계정" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {/* 같은 이름·다른 유형 계정이 공존할 수 있어(복합 유니크) 유형을
+                                  함께 보여야 고를 수 있다. 비활성 계정도 후보에 남으므로 표시 */}
+                              {candidates.map((a) => (
+                                <SelectItem key={a.id} value={String(a.id)}>
+                                  {a.name} · {accountTypeLabel(a.type)}
+                                  {a.is_active ? '' : ' (비활성)'}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                        {choice?.action === 'create' &&
+                          (requiredType ? (
+                            // 부동산·대출 항목은 유형이 고정이라 선택지를 주지 않는다
+                            <span className="text-xs text-muted-foreground">
+                              {SOURCE_KIND_LABEL[s.kind]} 계정으로 생성
+                            </span>
+                          ) : (
+                            <Select
+                              value={choice.type}
+                              onValueChange={(v) =>
+                                setMappingChoices((prev) => ({
+                                  ...prev,
+                                  [key]: { ...prev[key], type: v as AccountType },
+                                }))
+                              }
+                            >
+                              <SelectTrigger className="w-36">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {CREATABLE_ACCOUNT_TYPES.map((t) => (
+                                  <SelectItem key={t.value} value={t.value}>
+                                    {t.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ))}
+                      </div>
+                      {choice?.action === 'exclude' && (
+                        <p className="text-xs text-amber-400">
+                          {s.kind === 'ledger'
+                            ? '이 결제수단의 거래는 이번 업로드에서 등록되지 않아요.'
+                            : '이 항목은 이번 업로드에서 반영되지 않아요.'}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+              {importError && <p className="text-sm text-destructive">{importError}</p>}
+            </div>
           ) : importPreview ? (
             <div className="space-y-3 text-sm">
               <p className="text-xs text-muted-foreground">
-                {importPreview.review.length > 0 ? (
+                {previewReview.length > 0 ? (
                   <>
-                    수입/지출 {importPreview.importable_count}건은 바로 등록돼요. 아래 이체{' '}
-                    {importPreview.review.length}건만 정해주시면 돼요 — 내계좌이체 짝이 맞는 행은
+                    수입/지출 {previewImportableCount}건은 바로 등록돼요. 아래 이체{' '}
+                    {previewReview.length}건만 정해주시면 돼요 — 내계좌이체 짝이 맞는 행은
                     자동으로 한 건의 이체가 돼요.
                   </>
                 ) : (
-                  <>수입/지출 {importPreview.importable_count}건을 등록하고, 아래 평가액을 반영할게요.</>
+                  <>수입/지출 {previewImportableCount}건을 등록할게요.</>
                 )}
               </p>
-              {importPreview.valuations.length > 0 && (
+              {resolvedMappings.some((m) => m.action === 'exclude') && (
+                <p className="text-xs text-amber-400">
+                  제외한 계정({resolvedMappings
+                    .filter((m) => m.action === 'exclude')
+                    .map((m) => m.name)
+                    .join(', ')})의 내역은 등록되지 않아요.
+                </p>
+              )}
+              {previewValuations.length > 0 && (
                 <div className="space-y-1 rounded-md border p-2">
                   <p className="text-xs font-medium">
-                    반영될 평가액 — 부동산 {importPreview.valuations.length}건 (오늘 날짜)
+                    반영될 평가액 — 부동산 {previewValuations.length}건 (오늘 날짜)
                   </p>
                   <div className="space-y-1">
-                    {importPreview.valuations.map((v, i) => (
+                    {previewValuations.map((v, i) => (
                       <div
                         key={`${i}-${v.account_type}-${v.product_name}`}
                         className="flex items-center justify-between gap-2 text-xs"
@@ -1504,13 +1818,13 @@ export function TransactionsPage() {
                   </div>
                 </div>
               )}
-              {importPreview.liabilities.length > 0 && (
+              {previewLiabilities.length > 0 && (
                 <div className="space-y-1 rounded-md border p-2">
                   <p className="text-xs font-medium">
-                    반영될 대출 잔액 — {importPreview.liabilities.length}건 (오늘 날짜, 총자산 차감)
+                    반영될 대출 잔액 — {previewLiabilities.length}건 (오늘 날짜, 총자산 차감)
                   </p>
                   <div className="space-y-1">
-                    {importPreview.liabilities.map((v, i) => (
+                    {previewLiabilities.map((v, i) => (
                       <div
                         key={`${i}-loan-${v.product_name}`}
                         className="flex items-center justify-between gap-2 text-xs"
@@ -1529,11 +1843,11 @@ export function TransactionsPage() {
               )}
               {/* 다이얼로그 본문 전체가 스크롤되므로 여기서 다시 스크롤하지 않는다 */}
               <div className="space-y-2">
-                {importPreview.review.map((r) => {
+                {previewReview.map((r) => {
                   const decision = reviewDecisions[r.row]
                   const pairAuto = isPairAuto(r.row, r.pair_row)
                   const pairRow = r.pair_row
-                    ? importPreview.review.find((p) => p.row === r.pair_row)
+                    ? previewReview.find((p) => p.row === r.pair_row)
                     : undefined
                   return (
                     <div key={r.row} className="space-y-2 rounded-md border p-2">
@@ -1668,13 +1982,36 @@ export function TransactionsPage() {
           <DialogFooter>
             {importResult ? (
               <Button onClick={() => setImportOpen(false)}>닫기</Button>
-            ) : importPreview ? (
+            ) : importPreview && importStep === 'accounts' ? (
               <>
                 <Button
                   variant="outline"
                   onClick={() => {
                     setImportPreview(null)
+                    setImportStep('form')
+                    setResolvedMappings([])
                     setImportError(null)
+                  }}
+                >
+                  이전
+                </Button>
+                <Button onClick={confirmAccounts} disabled={importing}>
+                  {importing ? '계정 정리 중…' : '계정 확정하고 다음'}
+                </Button>
+              </>
+            ) : importPreview ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setImportError(null)
+                    // 계정 소스가 있으면 매핑 스텝으로, 없으면 입력 화면으로 되돌아간다
+                    if (importPreview.account_sources.length > 0) {
+                      setImportStep('accounts')
+                    } else {
+                      setImportPreview(null)
+                      setImportStep('form')
+                    }
                   }}
                 >
                   이전
