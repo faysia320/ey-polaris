@@ -98,6 +98,8 @@ interface FormState {
   account_id: string
   /** 이체 전용 — 입금 계정 (account_id가 출금 계정) */
   counter_account_id: string
+  /** 간편결제 계정으로 결제한 건의 실제 결제 계정 — 'none'이면 미지정(계정 기본 연결에 맡김) */
+  linked_account_id: string
   member_id: string
   amount: string
   memo: string
@@ -111,6 +113,7 @@ const emptyForm = (): FormState => ({
   category_id: '',
   account_id: '',
   counter_account_id: '',
+  linked_account_id: 'none',
   member_id: 'none',
   amount: '',
   memo: '',
@@ -141,9 +144,6 @@ const SOURCE_REQUIRED_TYPE: Partial<Record<ImportSourceKind, AccountType>> = {
   valuation: 'real_estate',
   liability: 'loan',
 }
-
-/** 매핑 스텝에서 새로 만들 수 있는 유형 — 간편결제는 연결 계정이 필수라 설정 화면에서만 만든다 */
-const CREATABLE_ACCOUNT_TYPES = ACCOUNT_TYPES.filter((t) => t.value !== 'easy_pay')
 
 /** 소스 식별자 — 같은 이름이 결제수단이면서 상품명일 수 있어 종류까지 포함한다 */
 const sourceKey = (s: { kind: ImportSourceKind; name: string }) => `${s.kind}|${s.name}`
@@ -183,6 +183,8 @@ interface BundleLeg {
   date: string
   time: string | null
   account_name: string
+  /** 이 다리가 실제로 귀속되는 결제 계정 이름 (간편결제가 아니면 null) */
+  linked_account_name: string | null
   category_name: string
   memo: string | null
 }
@@ -195,6 +197,7 @@ const bundleLegs = (t: Transaction): { expense: BundleLeg; income: BundleLeg } =
     date: t.date,
     time: t.time,
     account_name: t.account_name,
+    linked_account_name: t.linked_account_name,
     category_name: t.category_name,
     memo: t.memo,
   }
@@ -203,11 +206,23 @@ const bundleLegs = (t: Transaction): { expense: BundleLeg; income: BundleLeg } =
     date: partner.date,
     time: partner.time,
     account_name: partner.account_name,
+    linked_account_name: partner.linked_account_name,
     category_name: partner.category_name,
     memo: partner.memo,
   }
   return t.kind === 'expense' ? { expense: self, income: other } : { expense: other, income: self }
 }
+
+/** 결제수단 표기 — 간편결제면 실제 결제가 빠지는 계정을 괄호로 덧붙인다.
+ *  한 행에 계정이 둘 이상 나오는 자리(이체의 출금→입금)에서 화살표 의미가 섞이지 않게
+ *  `출금계정(→결제계정) → 입금계정` 형태로 중첩한다. */
+const payerText = (accountName: string, settlementName: string | null) =>
+  settlementName ? `${accountName}(→${settlementName})` : accountName
+
+/** 계정이 하나만 나오는 자리(환불 묶음 행·묶음 보기의 각 다리)의 계정 표기 —
+ *  화살표를 중첩할 필요가 없어 `계정 → 결제계정`으로 편다. */
+const legAccountText = (leg: BundleLeg) =>
+  leg.linked_account_name ? `${leg.account_name} → ${leg.linked_account_name}` : leg.account_name
 
 /** 병합 행의 표시값 — 이체 묶음: 출금→입금·거래 금액(청), 환불 묶음: 순지출(적) */
 const bundleDisplay = (t: Transaction) => {
@@ -216,16 +231,26 @@ const bundleDisplay = (t: Transaction) => {
     return {
       kind: 'transfer' as TransactionKind,
       amount: expense.amount,
-      accountText: `${expense.account_name} → ${income.account_name}`,
+      accountText: `${payerText(expense.account_name, expense.linked_account_name)} → ${income.account_name}`,
       category_name: expense.category_name,
     }
   }
   return {
     kind: 'expense' as TransactionKind,
     amount: Math.max(expense.amount - income.amount, 0),
-    accountText: expense.account_name,
+    accountText: legAccountText(expense),
     category_name: expense.category_name,
   }
+}
+
+/** 목록(표·모바일 카드)이 공유하는 계정 표시 텍스트.
+ *  이체는 출금 → 입금, 간편결제는 실제 결제가 빠지는 계정까지 함께 보여준다
+ *  (건별 지정이든 계정 기본 연결이든 서버가 최종 귀속 계정을 linked_account_name으로 준다). */
+const accountText = (t: Transaction) => {
+  if (isBundle(t)) return bundleDisplay(t).accountText
+  if (t.kind === 'transfer' && t.counter_account_name)
+    return `${payerText(t.account_name, t.linked_account_name)} → ${t.counter_account_name}`
+  return t.linked_account_name ? `${t.account_name} → ${t.linked_account_name}` : t.account_name
 }
 
 export function TransactionsPage() {
@@ -305,6 +330,14 @@ export function TransactionsPage() {
   // 캘린더 뷰는 항상 특정 월을 기준으로 한다 (월 필터가 비어 있으면 현재 월)
   const calendarMonth = filters.month ?? currentMonth()
 
+  // 건별 연결 계정은 간편결제 계정으로 결제한 건에서만 의미가 있다 (백엔드 검증과 동일 조건)
+  const formAccountIsEasyPay =
+    accounts.find((a) => String(a.id) === form.account_id)?.type === 'easy_pay'
+  // 건별 연결 후보 — 활성 카드/은행 계정만 (백엔드 LINKABLE_TYPES와 일치)
+  const linkableAccounts = accounts.filter(
+    (a) => a.is_active && (a.type === 'card' || a.type === 'bank'),
+  )
+
   const switchView = (next: 'table' | 'calendar') => {
     setView(next)
     if (next === 'calendar' && !filters.month) {
@@ -338,6 +371,7 @@ export function TransactionsPage() {
       category_id: String(t.category_id),
       account_id: String(t.account_id),
       counter_account_id: t.counter_account_id ? String(t.counter_account_id) : '',
+      linked_account_id: t.linked_account_id ? String(t.linked_account_id) : 'none',
       member_id: t.member_id ? String(t.member_id) : 'none',
       amount: String(t.amount),
       memo: t.memo ?? '',
@@ -368,6 +402,11 @@ export function TransactionsPage() {
       account_id: Number(form.account_id),
       counter_account_id:
         form.kind === 'transfer' ? Number(form.counter_account_id) : null,
+      // 간편결제 계정으로 결제한 건에서만 보낸다 — 그 외에는 백엔드가 422로 거부한다
+      linked_account_id:
+        formAccountIsEasyPay && form.linked_account_id !== 'none'
+          ? Number(form.linked_account_id)
+          : null,
       member_id: form.member_id === 'none' ? null : Number(form.member_id),
       memo: form.memo.trim() || null,
     }
@@ -513,14 +552,7 @@ export function TransactionsPage() {
       {
         id: 'account',
         header: '계정',
-        cell: ({ row }) => {
-          const t = row.original
-          if (isBundle(t)) return bundleDisplay(t).accountText
-          // 이체는 출금 → 입금 흐름을 함께 표시
-          return t.kind === 'transfer' && t.counter_account_name
-            ? `${t.account_name} → ${t.counter_account_name}`
-            : t.account_name
-        },
+        cell: ({ row }) => accountText(row.original),
       },
       {
         id: 'member',
@@ -1151,11 +1183,7 @@ export function TransactionsPage() {
                 const kind = disp ? disp.kind : t.kind
                 const amount = disp ? disp.amount : t.amount
                 const category = disp ? disp.category_name : t.category_name
-                const account = disp
-                  ? disp.accountText
-                  : t.kind === 'transfer' && t.counter_account_name
-                    ? `${t.account_name} → ${t.counter_account_name}`
-                    : t.account_name
+                const account = accountText(t)
                 return (
                   <div key={row.id} className="rounded-lg border p-3">
                     <div className="flex items-start justify-between gap-2">
@@ -1301,11 +1329,7 @@ export function TransactionsPage() {
                 const kind = disp ? disp.kind : t.kind
                 const amount = disp ? disp.amount : t.amount
                 const category = disp ? disp.category_name : t.category_name
-                const account = disp
-                  ? disp.accountText
-                  : t.kind === 'transfer' && t.counter_account_name
-                    ? `${t.account_name} → ${t.counter_account_name}`
-                    : t.account_name
+                const account = accountText(t)
                 return (
                   <div key={t.id} className="flex items-center justify-between gap-2 text-sm">
                     <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -1481,7 +1505,15 @@ export function TransactionsPage() {
                 <Label>{form.kind === 'transfer' ? '출금 계정' : '자산 계정'}</Label>
                 <Select
                   value={form.account_id || undefined}
-                  onValueChange={(v) => setForm({ ...form, account_id: v })}
+                  onValueChange={(v) => {
+                    // 간편결제가 아닌 계정으로 바꾸면 건별 연결은 의미가 없어져 비운다
+                    const isEasyPay = accounts.find((a) => String(a.id) === v)?.type === 'easy_pay'
+                    setForm({
+                      ...form,
+                      account_id: v,
+                      linked_account_id: isEasyPay ? form.linked_account_id : 'none',
+                    })
+                  }}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="선택" />
@@ -1517,6 +1549,31 @@ export function TransactionsPage() {
                         ))}
                     </SelectContent>
                   </Select>
+                </div>
+              )}
+              {formAccountIsEasyPay && (
+                <div className="col-span-2 space-y-1">
+                  <Label>연결 계정 (선택)</Label>
+                  <Select
+                    value={form.linked_account_id}
+                    onValueChange={(v) => setForm({ ...form, linked_account_id: v })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">선택 안 함 (계정 기본 연결)</SelectItem>
+                      {linkableAccounts.map((a) => (
+                        <SelectItem key={a.id} value={String(a.id)}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    이 건이 실제로 결제된 카드/은행 계정이에요. 고르지 않으면 계정에 설정된 기본
+                    연결을 따라가요.
+                  </p>
                 </div>
               )}
               <div className="space-y-1">
@@ -1751,8 +1808,9 @@ export function TransactionsPage() {
                               <SelectTrigger className="w-36">
                                 <SelectValue />
                               </SelectTrigger>
+                              {/* 간편결제도 연결 계정 없이 만들 수 있어 전 유형을 고를 수 있다 */}
                               <SelectContent>
-                                {CREATABLE_ACCOUNT_TYPES.map((t) => (
+                                {ACCOUNT_TYPES.map((t) => (
                                   <SelectItem key={t.value} value={t.value}>
                                     {t.label}
                                   </SelectItem>
@@ -2228,7 +2286,7 @@ export function TransactionsPage() {
                     </div>
                     <p className="truncate text-muted-foreground">
                       {expense.date}
-                      {expense.time && ` ${formatTime(expense.time)}`} · {expense.account_name}
+                      {expense.time && ` ${formatTime(expense.time)}`} · {legAccountText(expense)}
                       {expense.memo ? ` · ${expense.memo}` : ''}
                     </p>
                   </div>
@@ -2247,7 +2305,7 @@ export function TransactionsPage() {
                     </div>
                     <p className="truncate text-muted-foreground">
                       {income.date}
-                      {income.time && ` ${formatTime(income.time)}`} · {income.account_name}
+                      {income.time && ` ${formatTime(income.time)}`} · {legAccountText(income)}
                       {income.memo ? ` · ${income.memo}` : ''}
                     </p>
                   </div>

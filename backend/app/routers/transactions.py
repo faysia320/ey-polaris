@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app import excel_import, models, schemas
 from app.database import get_db
+from app.routers.accounts import LINKABLE_TYPES
 from app.routers.utils import commit_or_conflict, get_or_404
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -17,6 +18,18 @@ def _month_range(month: str) -> tuple[date, date]:
     start = date(year, mon, 1)
     end = date(year + 1, 1, 1) if mon == 12 else date(year, mon + 1, 1)
     return start, end
+
+
+def _settlement_account_name(t: models.Transaction) -> str | None:
+    """이 거래가 실제로 귀속되는 결제 계정 이름 — analytics 패스스루와 같은 우선순위로
+    건별 지정 > 간편결제 계정의 기본 연결 > 없음(귀속되지 않음)을 따른다."""
+    if t.account.type != "easy_pay":
+        return None
+    if t.linked_account is not None:
+        return t.linked_account.name
+    if t.account.linked_account is not None:
+        return t.account.linked_account.name
+    return None
 
 
 def _partner_of(t: models.Transaction) -> schemas.TransactionLinkPartner | None:
@@ -35,6 +48,7 @@ def _partner_of(t: models.Transaction) -> schemas.TransactionLinkPartner | None:
         amount=partner.amount,
         category_name=partner.category.display_name,
         account_name=partner.account.name,
+        linked_account_name=_settlement_account_name(partner),
         memo=partner.memo,
     )
 
@@ -49,11 +63,13 @@ def _to_out(t: models.Transaction) -> schemas.TransactionOut:
         category_id=t.category_id,
         account_id=t.account_id,
         counter_account_id=t.counter_account_id,
+        linked_account_id=t.linked_account_id,
         member_id=t.member_id,
         memo=t.memo,
         category_name=t.category.display_name,
         account_name=t.account.name,
         counter_account_name=t.counter_account.name if t.counter_account else None,
+        linked_account_name=_settlement_account_name(t),
         member_name=t.member.name if t.member else None,
         link_id=t.link_id,
         link_type=t.link.link_type if t.link else None,
@@ -63,7 +79,20 @@ def _to_out(t: models.Transaction) -> schemas.TransactionOut:
 
 def _validate_refs(db: Session, payload: schemas.TransactionCreate) -> None:
     category = get_or_404(db, models.Category, payload.category_id, "카테고리")
-    get_or_404(db, models.Account, payload.account_id, "자산 계정")
+    account = get_or_404(db, models.Account, payload.account_id, "자산 계정")
+    if payload.linked_account_id is not None:
+        # 건별 연결 계정은 간편결제 결제수단 거래에서만 의미가 있다 — 그 외에서 허용하면
+        # 집계 라우팅이 무시하는 값이 조용히 저장된다.
+        if account.type != "easy_pay":
+            raise HTTPException(
+                status_code=422,
+                detail="연결 계정은 간편결제 계정으로 결제한 거래에만 지정할 수 있습니다",
+            )
+        linked = get_or_404(db, models.Account, payload.linked_account_id, "연결 계정")
+        if linked.type not in LINKABLE_TYPES:
+            raise HTTPException(
+                status_code=422, detail="연결 계정은 카드 또는 은행 계정이어야 합니다"
+            )
     if payload.kind == "transfer":
         # 이체는 출금(account_id)→입금(counter_account_id) 두 다리가 모두 필요
         if payload.counter_account_id is None:
@@ -136,10 +165,16 @@ def list_transactions(
         select(models.Transaction)
         .options(
             selectinload(models.Transaction.category),
-            selectinload(models.Transaction.account),
+            # 계정의 기본 연결까지 따라 로드한다 — 건별 지정이 없을 때 귀속 계정 이름을 만든다
+            selectinload(models.Transaction.account).selectinload(models.Account.linked_account),
             selectinload(models.Transaction.counter_account),
+            selectinload(models.Transaction.linked_account),
             selectinload(models.Transaction.member),
-            partner_leg.selectinload(models.Transaction.account),
+            # 짝 다리도 귀속 계정 이름을 내보내므로 계정·기본 연결·건별 연결을 함께 로드한다
+            partner_leg.selectinload(models.Transaction.account).selectinload(
+                models.Account.linked_account
+            ),
+            partner_leg.selectinload(models.Transaction.linked_account),
             partner_leg.selectinload(models.Transaction.category),
         )
         .where(*_filter_conditions(month, kind, category_id, major, account_id, member_id))

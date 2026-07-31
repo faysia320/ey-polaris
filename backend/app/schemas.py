@@ -47,17 +47,17 @@ class AccountCreate(BaseModel):
     member_id: int = Field(description="소유자 구성원 id — 모든 계정은 소유자 필수")
     linked_account_id: int | None = Field(
         default=None,
-        description="간편결제(easy_pay) 전용 — 실제 결제가 빠지는 카드/은행 계정 id",
+        description="간편결제(easy_pay) 전용 기본 연결 계정 — 실제 결제가 빠지는 카드/은행 계정 id. "
+        "선택 항목이며, 비우면 거래별로 지정한다",
     )
 
     @model_validator(mode="after")
     def check_linked_account(self) -> "AccountCreate":
-        # easy_pay는 연결 계정 필수, 그 외 유형은 연결 계정을 가질 수 없다 (유형별 정합성).
+        # easy_pay의 기본 연결 계정은 선택이다 — 결제 카드가 거래마다 다른 간편결제는
+        # 계정에 고정하지 않고 거래별(Transaction.linked_account_id)로 지정한다.
+        # 그 외 유형은 여전히 연결 계정을 가질 수 없다 (유형별 정합성).
         # 연결 계정의 유형(card|bank)·존재·자기참조 검증은 DB가 필요하므로 라우터에서 수행한다.
-        if self.type == "easy_pay":
-            if self.linked_account_id is None:
-                raise ValueError("간편결제 계정은 연결 계정(linked_account_id)이 필요합니다")
-        elif self.linked_account_id is not None:
+        if self.type != "easy_pay" and self.linked_account_id is not None:
             raise ValueError("간편결제 유형이 아닌 계정에는 연결 계정을 설정할 수 없습니다")
         return self
 
@@ -104,6 +104,11 @@ class TransactionCreate(BaseModel):
     counter_account_id: int | None = Field(
         default=None, description="이체(transfer) 전용 입금 계정 — account_id가 출금 계정"
     )
+    linked_account_id: int | None = Field(
+        default=None,
+        description="간편결제 거래 전용 — 이 건의 실제 결제가 빠지는 카드/은행 계정 id. "
+        "지정하면 계정 기본 연결(accounts.linked_account_id)보다 우선한다",
+    )
     member_id: int | None = None
     memo: str | None = Field(default=None, max_length=255)
 
@@ -128,6 +133,9 @@ class TransactionLinkPartner(BaseModel):
     amount: int
     category_name: str
     account_name: str
+    # 이 다리가 실제로 귀속되는 결제 계정 이름 — 병합 행이 어느 다리를 앵커로 잡든
+    # 지출 다리의 귀속 계정을 그릴 수 있어야 하므로 짝 요약에도 함께 싣는다
+    linked_account_name: str | None = None
     memo: str | None = None
 
 
@@ -137,6 +145,9 @@ class TransactionOut(TransactionCreate):
     category_name: str
     account_name: str
     counter_account_name: str | None = None
+    # 이 건이 실제로 귀속되는 결제 계정 이름 — 건별 지정(linked_account_id)이 있으면 그것,
+    # 없으면 간편결제 계정의 기본 연결 계정. 어디에도 지정이 없으면 None (귀속 없음)
+    linked_account_name: str | None = None
     member_name: str | None = None
     # 사후 묶음 정보 — 묶이지 않았으면 셋 다 None
     link_id: int | None = None
@@ -387,11 +398,8 @@ class ImportAccountMapping(BaseModel):
         if self.action == "create":
             if self.type is None:
                 raise ValueError("새 계정 생성에는 유형(type)이 필요합니다")
-            # 간편결제는 연결 계정(linked_account_id)이 필수라 업로드 마법사에서 만들지 않는다.
-            if self.type == "easy_pay":
-                raise ValueError(
-                    "간편결제 계정은 업로드에서 만들 수 없습니다 (설정에서 만든 뒤 연결해주세요)"
-                )
+            # 간편결제도 여기서 만들 수 있다 — 연결 계정이 선택 항목이라 연결 없이 생성되고,
+            # 이후 설정에서 기본 연결을 지정하거나 거래별로 지정하면 된다.
         return self
 
 

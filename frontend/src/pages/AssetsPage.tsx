@@ -43,9 +43,11 @@ const ACCOUNT_TYPE_LABEL: Record<AccountType, string> = {
   loan: "대출",
 };
 
-// 간편결제 계정은 패스스루로 잔액이 연결 카드/은행에 귀속(잔액 0으로 수렴)되므로
-// 자체 그룹으로 노출하지 않는다.
-const HIDDEN_GROUP_TYPES: AccountType[] = ["easy_pay"];
+// 간편결제 계정은 패스스루로 잔액이 연결 카드/은행에 귀속되므로 보통 잔액 0으로 수렴하고,
+// 그때는 자체 그룹으로 노출하지 않는다. 다만 연결 계정이 계정 기본·거래별 어디에도 지정되지
+// 않은 거래는 귀속되지 않아 잔액이 남는다 — 이 경우까지 감추면 그룹 소계의 합이 상단
+// 총자산과 어긋나므로, 잔액이 하나라도 0이 아니면 그룹을 노출한다.
+const PASSTHROUGH_GROUP_TYPES: AccountType[] = ["easy_pay"];
 
 /** 평가액 스냅샷으로 잔액을 관리하는 시세형 계정 유형 */
 const VALUATION_TYPES: AccountType[] = ["stock", "real_estate"];
@@ -471,12 +473,14 @@ export function AssetsPage() {
       </Card>
 
       {/* 계정 카드 — 유형(카테고리)별 그룹 카드 안에 중첩. 계정이 없는 유형은 표시하지 않는다.
-          간편결제는 연결 계정으로 귀속되므로 그룹으로 표시하지 않는다.
+          간편결제는 연결 계정으로 귀속되므로 잔액이 모두 0이면 그룹으로 표시하지 않는다.
           구성원 필터가 "전체"면 유형 안에서 다시 구성원별로 나눠 보여준다 */}
       {(Object.keys(ACCOUNT_TYPE_LABEL) as AccountType[]).map((type) => {
-        if (HIDDEN_GROUP_TYPES.includes(type)) return null;
         const group = assets?.accounts.filter((a) => a.type === type) ?? [];
         if (group.length === 0) return null;
+        // 소계가 아니라 개별 잔액으로 판정한다 — +와 -가 상쇄돼 소계가 0이어도 내역은 봐야 한다
+        if (PASSTHROUGH_GROUP_TYPES.includes(type) && group.every((a) => a.balance === 0))
+          return null;
         const subtotal = group.reduce((sum, a) => sum + a.balance, 0);
         return (
           <Card key={type}>

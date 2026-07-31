@@ -265,7 +265,8 @@ function AccountsTab() {
   const [openingBalance, setOpeningBalance] = useState('0')
   const [isActive, setIsActive] = useState(true)
   const [memberId, setMemberId] = useState('')
-  const [linkedAccountId, setLinkedAccountId] = useState('')
+  // 'none' = 기본 연결 없음 (거래별 지정에 맡김). Radix Select는 빈 문자열 value를 못 쓴다
+  const [linkedAccountId, setLinkedAccountId] = useState('none')
   const [error, setError] = useState<string | null>(null)
 
   // 간편결제 연결 후보 — 카드/은행 계정만, 편집 중인 계정 자신은 제외
@@ -292,7 +293,7 @@ function AccountsTab() {
     setOpeningBalance('0')
     setIsActive(true)
     setMemberId('')
-    setLinkedAccountId('')
+    setLinkedAccountId('none')
     setError(null)
     setOpen(true)
   }
@@ -304,7 +305,7 @@ function AccountsTab() {
     setOpeningBalance(String(a.opening_balance))
     setIsActive(a.is_active)
     setMemberId(String(a.member_id))
-    setLinkedAccountId(a.linked_account_id ? String(a.linked_account_id) : '')
+    setLinkedAccountId(a.linked_account_id ? String(a.linked_account_id) : 'none')
     setError(null)
     setOpen(true)
   }
@@ -314,15 +315,16 @@ function AccountsTab() {
     const balance = Number(openingBalance)
     if (!Number.isInteger(balance)) return setError('개설 잔액은 정수여야 합니다')
     if (!memberId) return setError('소유자를 선택해주세요')
-    if (type === 'easy_pay' && !linkedAccountId) return setError('연결 계정을 선택해주세요')
     const input = {
       name: name.trim(),
       type,
       opening_balance: balance,
       is_active: isActive,
       member_id: Number(memberId),
-      // 간편결제일 때만 연결 계정을 보낸다 — 그 외 유형은 백엔드에서 null이어야 함
-      linked_account_id: type === 'easy_pay' ? Number(linkedAccountId) : null,
+      // 간편결제일 때만 연결 계정을 보낸다 — 그 외 유형은 백엔드에서 null이어야 함.
+      // 간편결제라도 기본 연결은 선택이라 'none'이면 null로 보낸다(거래별 지정에 맡김)
+      linked_account_id:
+        type === 'easy_pay' && linkedAccountId !== 'none' ? Number(linkedAccountId) : null,
     }
     try {
       if (editing) {
@@ -361,10 +363,13 @@ function AccountsTab() {
                 <TableCell>{a.name}</TableCell>
                 <TableCell>
                   {accountTypeLabel(a.type)}
-                  {a.type === 'easy_pay' && a.linked_account_id && (
+                  {a.type === 'easy_pay' && (
                     <span className="text-xs text-muted-foreground">
                       {' '}
-                      → {accounts.find((x) => x.id === a.linked_account_id)?.name ?? '—'}
+                      →{' '}
+                      {a.linked_account_id
+                        ? (accounts.find((x) => x.id === a.linked_account_id)?.name ?? '—')
+                        : '거래별 지정'}
                     </span>
                   )}
                 </TableCell>
@@ -411,12 +416,13 @@ function AccountsTab() {
             </div>
             {type === 'easy_pay' && (
               <div className="space-y-1">
-                <Label>연결 계정 (카드/은행)</Label>
-                <Select value={linkedAccountId || undefined} onValueChange={setLinkedAccountId}>
+                <Label>기본 연결 계정 (선택)</Label>
+                <Select value={linkedAccountId} onValueChange={setLinkedAccountId}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="실제 결제되는 계정 선택" />
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="none">선택 안 함 (거래별 지정)</SelectItem>
                     {linkableAccounts.map((a) => (
                       <SelectItem key={a.id} value={String(a.id)}>
                         {a.name}
@@ -424,11 +430,11 @@ function AccountsTab() {
                     ))}
                   </SelectContent>
                 </Select>
-                {linkableAccounts.length === 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    연결할 카드/은행 계정이 없어요. 먼저 카드 또는 은행 계정을 추가해주세요.
-                  </p>
-                )}
+                <p className="text-xs text-muted-foreground">
+                  {linkableAccounts.length === 0
+                    ? '연결할 카드/은행 계정이 없어요. 지금은 비워두고 나중에 지정해도 돼요.'
+                    : '항상 같은 카드로 결제되면 여기서 고정하세요. 건마다 다르면 비워두고 거래에서 하나씩 지정하면 돼요.'}
+                </p>
               </div>
             )}
             <div className="space-y-1">

@@ -28,6 +28,8 @@ export interface TransactionLinkPartner {
   amount: number
   category_name: string
   account_name: string
+  /** 이 다리가 실제로 귀속되는 결제 계정 이름 — 병합 행이 지출 다리의 귀속 계정을 그릴 때 쓴다 */
+  linked_account_name: string | null
   memo: string | null
 }
 
@@ -45,7 +47,11 @@ export interface Account {
   is_active: boolean
   /** 소유자 구성원 id — 모든 계정은 소유자 필수 */
   member_id: number
-  /** 간편결제(easy_pay) 전용 — 실제 결제가 빠지는 카드/은행 계정 id. 그 외 유형은 null */
+  /**
+   * 간편결제(easy_pay) 전용 기본 연결 계정 — 실제 결제가 빠지는 카드/은행 계정 id.
+   * 선택 항목이며 null이면 거래별 연결 계정(Transaction.linked_account_id)으로 귀속된다.
+   * 그 외 유형은 항상 null.
+   */
   linked_account_id: number | null
 }
 
@@ -70,11 +76,15 @@ export interface Transaction {
   account_id: number
   /** 이체 전용 — 입금 계정 (account_id가 출금 계정) */
   counter_account_id: number | null
+  /** 간편결제 거래의 건별 연결 계정 id — 계정 기본 연결보다 우선. 지정 안 했으면 null */
+  linked_account_id: number | null
   member_id: number | null
   memo: string | null
   category_name: string
   account_name: string
   counter_account_name: string | null
+  /** 이 건이 실제로 귀속되는 결제 계정 이름 (건별 지정 → 계정 기본 연결 순). 없으면 null */
+  linked_account_name: string | null
   member_name: string | null
   /** 사후 묶음 그룹 id — 묶이지 않았으면 null */
   link_id: number | null
@@ -94,6 +104,8 @@ export interface TransactionInput {
   account_id: number
   /** 이체 전용 — 입금 계정. 수입/지출은 null */
   counter_account_id: number | null
+  /** 간편결제 계정으로 결제한 건의 실제 결제 계정 — 미지정이면 null */
+  linked_account_id: number | null
   member_id: number | null
   memo: string | null
 }

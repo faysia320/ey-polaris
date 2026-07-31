@@ -53,8 +53,10 @@ class Account(Base):
     opening_balance: Mapped[int] = mapped_column(BigInteger, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     member_id: Mapped[int] = mapped_column(ForeignKey("members.id", ondelete="RESTRICT"))
-    # 간편결제(easy_pay) 전용 — 실제 결제가 빠지는 카드/은행 계정. easy_pay가 아니면 항상 NULL.
-    # 집계 시 easy_pay 거래의 net·지출은 이 연결 계정으로 귀속된다(패스스루).
+    # 간편결제(easy_pay) 전용 기본 연결 계정 — 실제 결제가 빠지는 카드/은행 계정.
+    # easy_pay가 아니면 항상 NULL이며, easy_pay라도 선택(NULL 허용)이다.
+    # 집계 시 easy_pay 거래의 net·지출은 이 연결 계정으로 귀속된다(패스스루). 단
+    # 거래에 건별 지정(Transaction.linked_account_id)이 있으면 그쪽이 우선한다.
     linked_account_id: Mapped[int | None] = mapped_column(
         ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=True
     )
@@ -138,6 +140,15 @@ class Transaction(Base):
     counter_account_id: Mapped[int | None] = mapped_column(
         ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=True
     )
+    # 간편결제 거래 전용 건별 연결 계정 — 이 건의 실제 결제가 빠지는 카드/은행 계정.
+    # account_id가 easy_pay 계정일 때만 채울 수 있고, 집계 라우팅에서 계정 기본 연결
+    # (Account.linked_account_id)보다 우선한다. 같은 간편결제라도 건마다 결제 카드가
+    # 다를 수 있어 계정에 고정하지 않는다.
+    # 알려진 한계: 이체(transfer)의 입금 다리(counter_account_id)가 간편결제인 경우는
+    # 건별 지정 대상이 아니며 계정 기본 연결만 적용된다.
+    linked_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=True
+    )
     member_id: Mapped[int | None] = mapped_column(
         ForeignKey("members.id", ondelete="SET NULL"), nullable=True
     )
@@ -153,6 +164,7 @@ class Transaction(Base):
         back_populates="transactions", foreign_keys=[account_id]
     )
     counter_account: Mapped["Account | None"] = relationship(foreign_keys=[counter_account_id])
+    linked_account: Mapped["Account | None"] = relationship(foreign_keys=[linked_account_id])
     member: Mapped["Member | None"] = relationship()
     link: Mapped["TransactionLink | None"] = relationship(back_populates="transactions")
 

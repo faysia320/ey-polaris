@@ -158,25 +158,34 @@ def assets(
     visible = accounts if member_id is None else [a for a in accounts if a.member_id == member_id]
 
     # 간편결제(easy_pay) 패스스루 — easy_pay 계정의 거래 net은 실제 결제가 빠지는
-    # 연결 계정(linked_account_id)으로 귀속시킨다. easy_pay 계정 자체에는 net이 남지
-    # 않으므로 잔액은 opening_balance로 수렴한다. (집계용 라우팅이며 거래 데이터는 불변)
+    # 연결 계정으로 귀속시킨다. 귀속 대상은 거래별 지정(Transaction.linked_account_id)이
+    # 우선하고, 없으면 계정 기본 연결(Account.linked_account_id)을 쓴다. 둘 다 없으면
+    # 라우팅하지 않아 net이 easy_pay 계정 자체에 남는다(미귀속 잔액).
+    # (집계용 라우팅이며 거래 데이터는 불변)
+    easy_pay_ids = {a.id for a in accounts if a.type == "easy_pay"}
     link_target = {
         a.id: a.linked_account_id
         for a in accounts
         if a.type == "easy_pay" and a.linked_account_id is not None
     }
 
-    def _route(account_id: int | None) -> int | None:
+    def _route(account_id: int | None, override_id: int | None = None) -> int | None:
+        """거래가 실제로 귀속되는 계정 — 건별 지정 > 계정 기본 연결 > 라우팅 없음."""
+        if override_id is not None and account_id in easy_pay_ids:
+            return override_id
         return link_target.get(account_id, account_id)
 
-    # 라우팅된 계정별 net — easy_pay 계정의 거래를 연결 계정으로 귀속
+    # 라우팅된 계정별 net — easy_pay 계정의 거래를 (건별/기본) 연결 계정으로 귀속.
+    # 건별 지정이 집계 단위를 나누므로 linked_account_id까지 함께 그룹핑한다.
     net_by_account: dict[int, int] = {}
-    for account_id, total in db.execute(
-        select(models.Transaction.account_id, func.sum(_signed_amount())).group_by(
-            models.Transaction.account_id
-        )
+    for account_id, override_id, total in db.execute(
+        select(
+            models.Transaction.account_id,
+            models.Transaction.linked_account_id,
+            func.sum(_signed_amount()),
+        ).group_by(models.Transaction.account_id, models.Transaction.linked_account_id)
     ).all():
-        target = _route(account_id)
+        target = _route(account_id, override_id)
         net_by_account[target] = net_by_account.get(target, 0) + int(total)
     # 이체 입금 다리(+) — _signed_amount()는 출금 계정의 -만 반영하므로 따로 가산
     for account_id, total in db.execute(
@@ -237,13 +246,18 @@ def assets(
     #  - 없으면 개설 잔액 + 해당 월까지의 누적 순증감 (기존 방식)
     month_expr = func.to_char(models.Transaction.date, "YYYY-MM")
     account_month_net: dict[tuple[int, str], int] = {}
-    # 현재 잔액 집계와 동일하게 easy_pay 거래를 연결 계정으로 라우팅
-    for account_id, m, total in db.execute(
-        select(models.Transaction.account_id, month_expr, func.sum(_signed_amount())).group_by(
-            models.Transaction.account_id, month_expr
+    # 현재 잔액 집계와 동일하게 easy_pay 거래를 연결 계정으로 라우팅 (건별 지정 우선)
+    for account_id, override_id, m, total in db.execute(
+        select(
+            models.Transaction.account_id,
+            models.Transaction.linked_account_id,
+            month_expr,
+            func.sum(_signed_amount()),
+        ).group_by(
+            models.Transaction.account_id, models.Transaction.linked_account_id, month_expr
         )
     ).all():
-        key = (_route(account_id), m)
+        key = (_route(account_id, override_id), m)
         account_month_net[key] = account_month_net.get(key, 0) + int(total)
     # 이체 입금 다리(+) — 현재 잔액 집계와 동일한 보정
     for account_id, m, total in db.execute(
