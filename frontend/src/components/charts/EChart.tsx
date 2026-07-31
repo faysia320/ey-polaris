@@ -11,6 +11,24 @@ interface EChartProps {
 }
 
 /**
+ * 차트 텍스트용 폰트 패밀리. canvas는 CSS를 상속하지 않으므로 echarts에 직접 넘겨야 한다.
+ * 값은 index.css의 --font-sans를 그대로 읽어 폰트 정의를 한 곳으로 유지한다.
+ * (canvas는 OpenType feature를 적용할 수 없어 tnum/ss17/ss18은 차트에 반영되지 않는다)
+ *
+ * --font-sans는 런타임에 바뀌지 않으므로 최초 1회만 읽는다 — 차트 옵션이 바뀔 때마다
+ * getComputedStyle을 호출하면 강제 스타일 재계산이 반복된다.
+ */
+let cachedFontFamily: string | null = null
+function chartFontFamily(): string {
+  if (cachedFontFamily === null) {
+    cachedFontFamily =
+      getComputedStyle(document.documentElement).getPropertyValue('--font-sans').trim() ||
+      'sans-serif'
+  }
+  return cachedFontFamily
+}
+
+/**
  * Apache ECharts 직접 래핑 컴포넌트.
  * echarts-for-react 대신 useRef/useEffect로 라이프사이클을 직접 관리한다
  * (research.md 권장 — React 19 호환성과 유지보수 리스크 회피).
@@ -32,7 +50,14 @@ export function EChart({ option, height = 300, className, onClick }: EChartProps
     chart.on('click', (params) => onClickRef.current?.(params))
     const observer = new ResizeObserver(() => chart.resize())
     observer.observe(containerRef.current)
+    // font-display: swap이라 첫 렌더는 폴백 폰트 메트릭으로 그려질 수 있다 —
+    // 웹폰트 로드가 끝나면 한 번 다시 그려 SUIT 기준으로 텍스트를 재측정한다
+    let disposed = false
+    document.fonts?.ready.then(() => {
+      if (!disposed) chart.resize()
+    })
     return () => {
+      disposed = true
       observer.disconnect()
       chart.dispose()
       chartRef.current = null
@@ -40,7 +65,10 @@ export function EChart({ option, height = 300, className, onClick }: EChartProps
   }, [])
 
   useEffect(() => {
-    chartRef.current?.setOption({ backgroundColor: 'transparent', ...option }, true)
+    chartRef.current?.setOption(
+      { backgroundColor: 'transparent', textStyle: { fontFamily: chartFontFamily() }, ...option },
+      true,
+    )
   }, [option])
 
   // contain: inline-size — echarts가 canvas에 박는 인라인 px 폭이 조상 flex/grid의

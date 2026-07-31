@@ -1,13 +1,35 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
 
 @custom-variant dark (&:is(.dark *));
 
+/* SUIT variable — 패키지 동봉 CSS(@sun-typeface/suit/.../SUIT-Variable.css)를 import하지 않고
+   직접 선언한다. 동봉본에는 font-display가 없어 폰트(624KB) 다운로드 동안 텍스트가
+   통째로 사라지는 FOIT가 발생하기 때문. swap으로 폴백 폰트를 먼저 보여준다. */
+@font-face {
+    font-family: 'SUIT Variable';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    /* format은 'woff2'만 쓴다 — 업스트림 동봉 CSS의 'woff2-variations'는 Safari 10~11 시절의
+       비표준 구문이고, 이를 모르는 엔진은 src 항목 전체를 건너뛰어 폰트가 아예 안 뜬다.
+       현행 브라우저는 plain 'woff2'로도 가변 축(wght 100~900)을 정상 해석한다. */
+    src: url('@sun-typeface/suit/fonts/variable/woff2/SUIT-Variable.woff2') format('woff2');
+}
+
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
+    /* SUIT는 한글 완성형 11,172자를 전부 담지만 em dash(—) 등 일부 약물이 없다 —
+       폴백은 한글이 있는 시스템 폰트로 이어 붙여 대체 글립이 튀지 않게 한다. */
+    --font-sans: 'SUIT Variable', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+        'Malgun Gothic', 'Segoe UI', system-ui, sans-serif;
+    /* tnum: 고정폭 숫자 / ss17: 영숫자 혼용 시 식별용 변형 글자 / ss18: 대체 화살표.
+       Tailwind v4가 이 수정자를 --default-font-feature-settings로 승격해 preflight의
+       html 규칙에 실어주므로 앱 전역에 상속된다. code/pre는 mono 계열 리셋을 타 제외된다. */
+    --font-sans--font-feature-settings: 'tnum', 'ss17', 'ss18';
+    /* font-heading은 별도 테마 키라 sans의 수정자를 물려받지 않는다 — 명시적으로 같은 값을 준다 */
+    --font-heading--font-feature-settings: 'tnum', 'ss17', 'ss18';
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
