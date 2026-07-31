@@ -1,0 +1,59 @@
+# NAS(Portainer) 배포용 스택 정의.
+# 로컬 개발용 docker-compose.yml 과 달리 build 없이 Docker Hub 이미지를 pull 한다.
+# Portainer > Stacks > Add stack 에 이 파일 내용을 붙여넣고 배포한다.
+#
+# 포트 정책: frontend(9100)만 호스트에 노출. backend/db는 스택 내부 네트워크로만 접근한다
+#            (frontend nginx가 /api 를 backend:8000 으로 프록시하므로 외부 노출 불필요).
+# 같은 NAS의 stock-flow 스택(9000/9010/9020)과 포트·컨테이너명·볼륨명이 겹치지 않는다.
+services:
+  db:
+    image: postgres:18
+    container_name: polaris_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-polaris}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-polaris}
+      POSTGRES_DB: ${POSTGRES_DB:-polaris}
+    volumes:
+      # postgres:18 이미지는 볼륨 마운트 지점이 /var/lib/postgresql 로 변경됨 (data 하위 아님)
+      - polaris-db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-polaris} -d ${POSTGRES_DB:-polaris}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: faysia320/ey_polaris-backend:latest
+    container_name: polaris_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-polaris}:${POSTGRES_PASSWORD:-polaris}@db:5432/${POSTGRES_DB:-polaris}
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # slim 이미지에 curl이 없으므로 python 표준 라이브러리로 확인한다
+      test:
+        - "CMD-SHELL"
+        - "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/docs').status==200 else 1)\""
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      # 기동 시 alembic upgrade head(스키마 + 기준정보 시드)가 먼저 돌기 때문에 여유를 둔다
+      start_period: 40s
+
+  frontend:
+    image: faysia320/ey_polaris-frontend:latest
+    container_name: polaris_frontend
+    restart: unless-stopped
+    ports:
+      - "9100:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  polaris-db-data:
