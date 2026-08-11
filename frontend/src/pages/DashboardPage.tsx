@@ -1,20 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ECElementEvent, EChartsOption } from 'echarts'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { IconChevronLeftLine, IconChevronRightLine } from '@karrotmarket/react-monochrome-icon'
+import { Icon } from '@seed-design/react'
+import { ActionButton } from 'seed-design/ui/action-button'
+import { DialogBody, DialogContent, DialogRoot } from 'seed-design/ui/dialog'
 
 import { EChart } from '@/components/charts/EChart'
 import { MarkdownView } from '@/components/MarkdownView'
 import { MemberFilterSelect } from '@/components/members/MemberFilterSelect'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { Surface } from '@/components/ui/Surface'
 import { api } from '@/lib/api'
 import { addMonths, previousMonth, formatKRW } from '@/lib/format'
 import { useAIReportStore } from '@/stores/aiReport'
@@ -160,7 +154,7 @@ export function DashboardPage() {
   }
 
   if (error) {
-    return <p className="text-destructive">대시보드를 불러오지 못했습니다: {error}</p>
+    return <p className="t4-regular text-fg-critical">대시보드를 불러오지 못했습니다: {error}</p>
   }
 
   const budgetTotal = dashboard?.budget_total ?? 0
@@ -171,187 +165,175 @@ export function DashboardPage() {
   const detailTotal = detail?.items.reduce((sum, t) => sum + t.amount, 0) ?? 0
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-y-3">
-        <h1 className="text-2xl font-semibold">대시보드</h1>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => setMonth(addMonths(month, -1))}>
-            <ChevronLeft />
-          </Button>
-          <span className="w-24 text-center font-medium tabular-nums">{month}</span>
-          <Button variant="outline" size="icon" onClick={() => setMonth(addMonths(month, 1))}>
-            <ChevronRight />
-          </Button>
+    <div className="flex flex-col gap-x6">
+      <div className="flex flex-wrap items-center justify-between gap-y-x3">
+        <h1 className="screen-title">대시보드</h1>
+        <div className="flex items-center gap-x2">
+          <ActionButton
+            variant="neutralOutline"
+            size="small"
+            layout="iconOnly"
+            aria-label="이전 달"
+            onClick={() => setMonth(addMonths(month, -1))}
+          >
+            <Icon svg={<IconChevronLeftLine />} />
+          </ActionButton>
+          <span className="t4-medium w-24 shrink-0 whitespace-nowrap text-center tabular-nums">{month}</span>
+          <ActionButton
+            variant="neutralOutline"
+            size="small"
+            layout="iconOnly"
+            aria-label="다음 달"
+            onClick={() => setMonth(addMonths(month, 1))}
+          >
+            <Icon svg={<IconChevronRightLine />} />
+          </ActionButton>
           <MemberFilterSelect />
         </div>
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
-          <CardTitle className="flex items-center gap-2 text-base">
+      <Surface className="flex flex-col gap-x4">
+        <div className="flex flex-wrap items-center justify-between gap-x2">
+          <h2 className="t5-bold flex items-center gap-x2">
             <span>🤖</span> AI 리포트
-          </CardTitle>
-          <Button size="sm" onClick={handleGenerateReport} disabled={reportLoading}>
-            {reportLoading ? '생성 중…' : report ? '다시 생성' : '리포트 생성'}
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {reportError && (
-            <p className="text-sm text-destructive">리포트 생성에 실패했습니다: {reportError}</p>
-          )}
-          {!reportError && report && (
-            <>
-              <MarkdownView>{report.content}</MarkdownView>
-              <p className="mt-3 text-xs text-muted-foreground">
-                {month} · {report.model} · {new Date(report.created_at).toLocaleString('ko-KR')}
-              </p>
-            </>
-          )}
-          {!reportError && !report && (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              {reportLoading
-                ? '리포트를 불러오는 중…'
-                : '아직 이 달의 AI 리포트가 없어요. 버튼을 눌러 생성해 보세요 ✨'}
+          </h2>
+          <ActionButton size="small" onClick={handleGenerateReport} loading={reportLoading}>
+            {report ? '다시 생성' : '리포트 생성'}
+          </ActionButton>
+        </div>
+        {reportError && (
+          <p className="t4-regular text-fg-critical">리포트 생성에 실패했습니다: {reportError}</p>
+        )}
+        {!reportError && report && (
+          <div>
+            <MarkdownView>{report.content}</MarkdownView>
+            <p className="t2-regular mt-x3 text-fg-neutral-muted">
+              {month} · {report.model} · {new Date(report.created_at).toLocaleString('ko-KR')}
             </p>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        )}
+        {!reportError && !report && (
+          <p className="t4-regular py-x6 text-center text-fg-neutral-muted">
+            {reportLoading
+              ? '리포트를 불러오는 중…'
+              : '아직 이 달의 AI 리포트가 없어요. 버튼을 눌러 생성해 보세요 ✨'}
+          </p>
+        )}
+      </Surface>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">이번 달 수입</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold text-emerald-400">
-              {formatKRW(dashboard?.income_total ?? 0)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">이번 달 지출</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold text-rose-400">
-              {formatKRW(dashboard?.expense_total ?? 0)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">예산 소진율</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold">
-              {budgetTotal > 0 ? `${Math.round((budgetSpent / budgetTotal) * 100)}%` : '—'}
-            </p>
-            <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-muted">
+      <div className="grid grid-cols-1 gap-x4 md:grid-cols-3">
+        <Surface className="flex flex-col gap-x2">
+          <p className="t4-medium text-fg-neutral-muted">이번 달 수입</p>
+          <p className="t9-bold text-fg-positive">{formatKRW(dashboard?.income_total ?? 0)}</p>
+        </Surface>
+        <Surface className="flex flex-col gap-x2">
+          <p className="t4-medium text-fg-neutral-muted">이번 달 지출</p>
+          <p className="t9-bold text-fg-critical">{formatKRW(dashboard?.expense_total ?? 0)}</p>
+        </Surface>
+        <Surface className="flex flex-col gap-x2">
+          <p className="t4-medium text-fg-neutral-muted">예산 소진율</p>
+          <p className="t9-bold">
+            {budgetTotal > 0 ? `${Math.round((budgetSpent / budgetTotal) * 100)}%` : '—'}
+          </p>
+          <div className="flex h-x2 overflow-hidden rounded-full bg-bg-neutral-weak">
+            {budgets.map((b) => (
+              <div
+                key={b.major}
+                title={`${b.major} ${formatKRW(b.spent)}`}
+                className="h-full"
+                style={{
+                  width: stackDenom > 0 ? `${(b.spent / stackDenom) * 100}%` : '0%',
+                  backgroundColor: colorByName.get(b.major) ?? CHART_PALETTE[0],
+                }}
+              />
+            ))}
+          </div>
+          <p className="t2-regular text-fg-neutral-muted">
+            {formatKRW(budgetSpent)} / {formatKRW(budgetTotal)}
+          </p>
+          {budgets.length > 0 && (
+            <ul className="flex flex-col gap-x1">
               {budgets.map((b) => (
-                <div
-                  key={b.major}
-                  title={`${b.major} ${formatKRW(b.spent)}`}
-                  className="h-full"
-                  style={{
-                    width: stackDenom > 0 ? `${(b.spent / stackDenom) * 100}%` : '0%',
-                    backgroundColor: colorByName.get(b.major) ?? CHART_PALETTE[0],
-                  }}
-                />
-              ))}
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {formatKRW(budgetSpent)} / {formatKRW(budgetTotal)}
-            </p>
-            {budgets.length > 0 && (
-              <ul className="mt-2 space-y-1">
-                {budgets.map((b) => (
-                  <li
-                    key={b.major}
-                    className="flex items-center justify-between gap-2 text-xs"
-                  >
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <span
-                        className="size-2 shrink-0 rounded-full"
-                        style={{
-                          backgroundColor: colorByName.get(b.major) ?? CHART_PALETTE[0],
-                        }}
-                      />
-                      <span className="truncate">{b.major}</span>
-                    </span>
+                <li key={b.major} className="t2-regular flex items-center justify-between gap-x2">
+                  <span className="flex min-w-0 items-center gap-x1_5">
                     <span
-                      className={`shrink-0 tabular-nums ${
-                        b.spent > b.amount ? 'text-rose-400' : 'text-muted-foreground'
-                      }`}
-                    >
-                      {formatKRW(b.spent)} / {formatKRW(b.amount)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+                      className="size-x2 shrink-0 rounded-full"
+                      style={{
+                        backgroundColor: colorByName.get(b.major) ?? CHART_PALETTE[0],
+                      }}
+                    />
+                    <span className="truncate">{b.major}</span>
+                  </span>
+                  <span
+                    className={`shrink-0 tabular-nums ${
+                      b.spent > b.amount ? 'text-fg-critical' : 'text-fg-neutral-muted'
+                    }`}
+                  >
+                    {formatKRW(b.spent)} / {formatKRW(b.amount)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Surface>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>카테고리별 지출</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {(dashboard?.expense_by_category.length ?? 0) > 0 ? (
-            <EChart option={treemapOption} height={400} onClick={handleTreemapClick} />
-          ) : (
-            <p className="py-12 text-center text-sm text-muted-foreground">
-              이번 달 지출이 아직 없어요. 맑은 밤하늘이네요 🌌
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      <Surface className="flex flex-col gap-x4">
+        <h2 className="t5-bold">카테고리별 지출</h2>
+        {(dashboard?.expense_by_category.length ?? 0) > 0 ? (
+          <EChart option={treemapOption} height={400} onClick={handleTreemapClick} />
+        ) : (
+          <p className="t4-regular py-x12 text-center text-fg-neutral-muted">
+            이번 달 지출이 아직 없어요. 맑은 밤하늘이네요 🌌
+          </p>
+        )}
+      </Surface>
 
-      <Dialog open={detail !== null} onOpenChange={(open) => !open && closeDetail()}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{detail?.major} 지출 내역</DialogTitle>
-            <DialogDescription>
-              {month} · {detail?.items.length ?? 0}건 · 합계 {formatKRW(detailTotal)}
-            </DialogDescription>
-          </DialogHeader>
-          {detail?.loading && (
-            <p className="py-8 text-center text-sm text-muted-foreground">불러오는 중...</p>
-          )}
-          {detail?.error && (
-            <p className="py-8 text-center text-sm text-destructive">
-              세부 내역을 불러오지 못했습니다: {detail.error}
-            </p>
-          )}
-          {detail && !detail.loading && !detail.error && (
-            <ScrollArea className="max-h-80">
-              {detail.items.length === 0 && (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  해당 카테고리의 거래가 없습니다.
-                </p>
-              )}
-              {detail.items.map((t) => (
-                <div
-                  key={t.id}
-                  className="flex items-center justify-between gap-3 border-b border-border/50 py-1.5 text-sm last:border-0"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs tabular-nums text-muted-foreground">{t.date}</span>
-                      <span className="truncate">{t.category_name}</span>
+      <DialogRoot open={detail !== null} onOpenChange={(open) => !open && closeDetail()}>
+        <DialogContent
+          title={`${detail?.major ?? ''} 지출 내역`}
+          description={`${month} · ${detail?.items.length ?? 0}건 · 합계 ${formatKRW(detailTotal)}`}
+        >
+          <DialogBody>
+            {detail?.loading && (
+              <p className="t4-regular py-x8 text-center text-fg-neutral-muted">불러오는 중...</p>
+            )}
+            {detail?.error && (
+              <p className="t4-regular py-x8 text-center text-fg-critical">
+                세부 내역을 불러오지 못했습니다: {detail.error}
+              </p>
+            )}
+            {detail && !detail.loading && !detail.error && (
+              <div className="max-h-80 overflow-y-auto">
+                {detail.items.length === 0 && (
+                  <p className="t4-regular py-x8 text-center text-fg-neutral-muted">
+                    해당 카테고리의 거래가 없습니다.
+                  </p>
+                )}
+                {detail.items.map((t) => (
+                  <div
+                    key={t.id}
+                    className="t4-regular flex items-center justify-between gap-x3 border-b border-stroke-neutral-weak py-x1_5 last:border-0"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-x2">
+                        <span className="t2-regular tabular-nums text-fg-neutral-muted">
+                          {t.date}
+                        </span>
+                        <span className="truncate">{t.category_name}</span>
+                      </div>
+                      {t.memo && (
+                        <p className="t2-regular truncate text-fg-neutral-muted">{t.memo}</p>
+                      )}
                     </div>
-                    {t.memo && (
-                      <p className="truncate text-xs text-muted-foreground">{t.memo}</p>
-                    )}
+                    <span className="shrink-0 font-medium tabular-nums">{formatKRW(t.amount)}</span>
                   </div>
-                  <span className="shrink-0 font-medium tabular-nums">{formatKRW(t.amount)}</span>
-                </div>
-              ))}
-            </ScrollArea>
-          )}
+                ))}
+              </div>
+            )}
+          </DialogBody>
         </DialogContent>
-      </Dialog>
+      </DialogRoot>
     </div>
   )
 }

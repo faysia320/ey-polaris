@@ -1,13 +1,13 @@
 import { useEffect } from 'react'
-import { Users } from 'lucide-react'
-
+import { IconPerson2Fill } from '@karrotmarket/react-monochrome-icon'
 import {
-  Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectRoot,
   SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+} from 'seed-design/ui/select'
+
 import { useMasterDataStore } from '@/stores/masterData'
 import { useMemberFilterStore } from '@/stores/memberFilter'
 
@@ -22,22 +22,25 @@ export function MemberFilterSelect() {
   }, [loaded, fetchAll])
 
   return (
-    <Select
-      value={memberId === null ? 'all' : String(memberId)}
-      onValueChange={(v) => setMemberId(v === 'all' ? null : Number(v))}
+    // SEED Select는 값을 배열로 다룬다 (다중 선택과 API를 공유) — 단일 선택은 항목 하나짜리 배열
+    <SelectRoot
+      size="responsive"
+      value={[memberId === null ? 'all' : String(memberId)]}
+      onValueChange={([v]) => setMemberId(v === 'all' ? null : Number(v))}
     >
-      <SelectTrigger className="w-32">
-        <Users className="size-4 text-muted-foreground" />
-        <SelectValue />
-      </SelectTrigger>
+      <SelectTrigger
+        aria-label="구성원 필터"
+        prefixIcon={<IconPerson2Fill />}
+        className="w-x16 md:w-auto md:min-w-x16"
+      />
       <SelectContent>
-        <SelectItem value="all">전체</SelectItem>
-        {members.map((m) => (
-          <SelectItem key={m.id} value={String(m.id)}>
-            {m.name}
-          </SelectItem>
-        ))}
+        <SelectGroup>
+          <SelectItem value="all" label="전체" />
+          {members.map((m) => (
+            <SelectItem key={m.id} value={String(m.id)} label={m.name} />
+          ))}
+        </SelectGroup>
       </SelectContent>
-    </Select>
+    </SelectRoot>
   )
 }

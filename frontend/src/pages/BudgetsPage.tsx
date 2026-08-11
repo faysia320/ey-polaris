@@ -1,17 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Copy, Trash2 } from 'lucide-react'
-
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
+  IconChevronLeftLine,
+  IconChevronRightLine,
+  IconSquare2StackedLine,
+  IconTrashcanLine,
+} from '@karrotmarket/react-monochrome-icon'
+import { Icon, PrefixIcon } from '@seed-design/react'
+import { ActionButton } from 'seed-design/ui/action-button'
+import {
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogRoot,
+  AlertDialogTitle,
+} from 'seed-design/ui/alert-dialog'
+import { TextField, TextFieldInput } from 'seed-design/ui/text-field'
+
+import { Surface } from '@/components/ui/Surface'
 import {
   Table,
   TableBody,
@@ -21,7 +28,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { addMonths, formatKRW, formatNumber } from '@/lib/format'
-import { touchTarget } from '@/lib/utils'
 import { useBudgetStore } from '@/stores/budgets'
 import { useMasterDataStore } from '@/stores/masterData'
 
@@ -117,52 +123,62 @@ export function BudgetsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-x6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">예산 설정</h1>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => changeMonth(-1)}>
-            <ChevronLeft />
-          </Button>
-          <span className="w-24 text-center font-medium tabular-nums">{month}</span>
-          <Button variant="outline" size="icon" onClick={() => changeMonth(1)}>
-            <ChevronRight />
-          </Button>
+        <h1 className="screen-title">예산 설정</h1>
+        <div className="flex items-center gap-x2">
+          <ActionButton
+            variant="neutralOutline"
+            size="small"
+            layout="iconOnly"
+            aria-label="이전 달"
+            onClick={() => changeMonth(-1)}
+          >
+            <Icon svg={<IconChevronLeftLine />} />
+          </ActionButton>
+          <span className="t4-medium w-24 shrink-0 whitespace-nowrap text-center tabular-nums">{month}</span>
+          <ActionButton
+            variant="neutralOutline"
+            size="small"
+            layout="iconOnly"
+            aria-label="다음 달"
+            onClick={() => changeMonth(1)}
+          >
+            <Icon svg={<IconChevronRightLine />} />
+          </ActionButton>
         </div>
       </div>
 
       <div className="flex justify-end">
-        <Button variant="outline" size="sm" onClick={handleCopyClick}>
-          <Copy />
+        <ActionButton variant="neutralOutline" size="small" onClick={handleCopyClick}>
+          <PrefixIcon svg={<IconSquare2StackedLine />} />
           전월 복사
-        </Button>
+        </ActionButton>
       </div>
 
-      <Card className="border-yellow-300/30">
-        <CardHeader>
-          <CardTitle className="text-sm text-muted-foreground">{month} 총 예산</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-2xl font-semibold">{formatKRW(total)}</p>
-        </CardContent>
-      </Card>
+      <Surface className="flex flex-col gap-x2 border-stroke-brand-weak">
+        <p className="t4-medium text-fg-neutral-muted">{month} 총 예산</p>
+        <p className="t9-bold">{formatKRW(total)}</p>
+      </Surface>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="t4-regular text-fg-critical">{error}</p>}
 
-      <div className="rounded-lg border">
+      <div className="rounded-r2 border border-stroke-neutral-weak">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>지출 대분류</TableHead>
               <TableHead className="hidden sm:table-cell">현재 예산</TableHead>
-              <TableHead className="w-32 sm:w-64">변경 금액 (원)</TableHead>
+              {/* SEED TextField는 단일(터치) 사이즈라 행이 두툼해진다 —
+                  빠른 입력 버튼이 두 줄로 접히지 않도록 컬럼을 넉넉히 잡는다 */}
+              <TableHead className="w-40 sm:w-72">변경 금액 (원)</TableHead>
               <TableHead></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {expenseMajors.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={4} className="py-x10 text-center text-fg-neutral-muted">
                   지출 카테고리가 없습니다. 기준정보 관리에서 먼저 추가해주세요.
                 </TableCell>
               </TableRow>
@@ -174,7 +190,7 @@ export function BudgetsPage() {
                   <TableCell>
                     {major}
                     {/* 모바일에서는 '현재 예산' 컬럼을 숨기고 보조 줄로 표시 */}
-                    <span className="block text-xs text-muted-foreground sm:hidden">
+                    <span className="t2-regular block text-fg-neutral-muted sm:hidden">
                       {budget ? formatKRW(budget.amount) : '—'}
                     </span>
                   </TableCell>
@@ -182,54 +198,61 @@ export function BudgetsPage() {
                     {budget ? formatKRW(budget.amount) : '—'}
                   </TableCell>
                   <TableCell>
-                    <div className="flex flex-col gap-1">
-                      <Input
-                        type="text"
-                        inputMode="numeric"
-                        placeholder={budget ? formatNumber(budget.amount) : '예산 입력'}
+                    <div className="flex flex-col gap-x1">
+                      <TextField
+                        aria-label={`${major} 예산 입력`}
                         // 내부 draft는 순수 숫자 문자열로 유지하고 표시값에만 콤마를 적용
                         value={drafts[major] ? formatNumber(Number(drafts[major])) : ''}
-                        onChange={(e) =>
-                          setDrafts({ ...drafts, [major]: e.target.value.replace(/[^\d]/g, '') })
+                        onValueChange={({ value }) =>
+                          setDrafts({ ...drafts, [major]: value.replace(/[^\d]/g, '') })
                         }
-                      />
-                      <div className="flex flex-wrap gap-1">
+                        suffix="원"
+                      >
+                        <TextFieldInput
+                          type="text"
+                          inputMode="numeric"
+                          aria-label={`${major} 예산 입력`}
+                          placeholder={budget ? formatNumber(budget.amount) : '예산 입력'}
+                        />
+                      </TextField>
+                      <div className="flex flex-wrap gap-x1">
                         {QUICK_AMOUNTS.map((q) => (
-                          <Button
+                          <ActionButton
                             key={q.value}
                             type="button"
-                            size="xs"
-                            variant="outline"
+                            size="xsmall"
+                            variant="neutralOutline"
                             onClick={() => addAmount(major, q.value)}
                           >
                             {q.label}
-                          </Button>
+                          </ActionButton>
                         ))}
                       </div>
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        size="sm"
-                        variant="secondary"
+                    <div className="flex justify-end gap-x2">
+                      <ActionButton
+                        size="small"
+                        variant="neutralWeak"
                         disabled={!drafts[major]}
                         onClick={() => saveRow(major)}
                       >
                         저장
-                      </Button>
+                      </ActionButton>
                       {budget && (
-                        <Button
-                          size="icon-sm"
+                        <ActionButton
+                          size="small"
                           variant="ghost"
-                          className={touchTarget}
+                          color="fg.critical"
+                          layout="iconOnly"
                           aria-label={`${major} 예산 삭제`}
                           onClick={() =>
                             remove(budget.id).catch((e: Error) => setError(e.message))
                           }
                         >
-                          <Trash2 className="text-destructive" />
-                        </Button>
+                          <Icon svg={<IconTrashcanLine />} />
+                        </ActionButton>
                       )}
                     </div>
                   </TableCell>
@@ -240,22 +263,25 @@ export function BudgetsPage() {
         </Table>
       </div>
 
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>전월 예산 복사</DialogTitle>
-            <DialogDescription>
+      {/* 되돌릴 수 없는 덮어쓰기라 Dialog가 아니라 AlertDialog를 쓴다 */}
+      <AlertDialogRoot open={confirmOpen} onOpenChange={(open) => setConfirmOpen(open)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>전월 예산 복사</AlertDialogTitle>
+            <AlertDialogDescription>
               {month}의 기존 예산을 모두 삭제하고 {prevMonth} 예산으로 덮어씁니다. 계속할까요?
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction variant="neutralWeak" onClick={() => setConfirmOpen(false)}>
               취소
-            </Button>
-            <Button onClick={confirmCopy}>덮어쓰기</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+            <AlertDialogAction variant="criticalSolid" onClick={confirmCopy}>
+              덮어쓰기
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialogRoot>
     </div>
   )
 }
