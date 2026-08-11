@@ -292,7 +292,10 @@ export function DashboardPage() {
               </p>
             )}
             {detail && !detail.loading && !detail.error && (
-              <div className="max-h-80 overflow-y-auto">
+              /* 높이를 제한하지 않는다 — SEED SidePanelBody가 이미 스크롤 컨테이너다.
+                 안쪽에 max-h를 두면 패널 높이가 남는데도 짧은 스크롤 영역이 하나 더 생긴다
+                 (다이얼로그였던 시절의 잔재) */
+              <div>
                 {detail.items.length === 0 && (
                   <p className="t4-regular py-x8 text-center text-fg-neutral-muted">
                     해당 카테고리의 거래가 없습니다.

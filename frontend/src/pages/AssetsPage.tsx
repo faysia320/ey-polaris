@@ -563,7 +563,9 @@ export function AssetsPage() {
               {valuationTarget && valuationHistory.length > 0 && (
                 <div className="flex flex-col gap-x1">
                   <p className="t4-medium">평가 이력</p>
-                  <div className="max-h-40 overflow-y-auto rounded-r2 border border-stroke-neutral-weak p-x2">
+                  {/* 이력은 폼 필드 사이에 끼는 보조 목록이라 높이를 묶어 둔다 —
+                      패널이 세로로 길어진 만큼 이전(160px)보다 넉넉하게 */}
+                  <div className="max-h-60 overflow-y-auto rounded-r2 border border-stroke-neutral-weak p-x2">
                     {valuationHistory.map((v) => (
                       <div
                         key={v.id}
