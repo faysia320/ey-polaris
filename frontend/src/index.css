@@ -55,4 +55,15 @@
     body {
         @apply bg-bg-layer-default text-fg-neutral;
     }
+
+    /* Tailwind v4의 `border`는 색을 currentColor로 둔다 — 텍스트 색을 따라가는 테두리는
+       거의 항상 실수다. 기본 테두리 색을 SEED의 약한 구분선으로 못박는다.
+       (색을 달리 쓰려면 그 자리에서 border-stroke-* 를 명시한다) */
+    *,
+    ::after,
+    ::before,
+    ::backdrop,
+    ::file-selector-button {
+        border-color: var(--seed-color-stroke-neutral-weak);
+    }
 }

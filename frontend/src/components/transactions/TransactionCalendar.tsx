@@ -1,10 +1,8 @@
 import { useMemo } from 'react'
+import { DatePicker, Text } from '@seed-design/react'
 
-import { cn } from '@/lib/utils'
-import { formatKRW, todayISO } from '@/lib/format'
+import { formatKRW, fromCalendarDate, toCalendarDate, todayISO } from '@/lib/format'
 import type { Transaction } from '@/types'
-
-const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
 
 interface DayTotals {
   income: number
@@ -18,13 +16,23 @@ interface TransactionCalendarProps {
   transactions: Transaction[]
   selectedDate: string | null
   onSelectDate: (date: string) => void
+  /** DatePicker 자체 헤더의 월 이동 — 주면 페이지의 월 상태와 동기화된다 */
+  onMonthChange?: (month: string) => void
 }
 
+/**
+ * 일별 수입/지출 합계를 얹은 달력.
+ *
+ * 직접 만든 7열 그리드 대신 SEED DatePicker의 `renderDateCellSupplement`를 쓴다 —
+ * 날짜 숫자 아래에 부가 정보를 붙이라고 정의된 확장 지점이고, 셀의 DOM·ARIA·키보드 이동은
+ * 컴포넌트가 계속 소유해 접근성을 잃지 않는다.
+ */
 export function TransactionCalendar({
   month,
   transactions,
   selectedDate,
   onSelectDate,
+  onMonthChange,
 }: TransactionCalendarProps) {
   const totalsByDate = useMemo(() => {
     const map = new Map<string, DayTotals>()
@@ -39,76 +47,37 @@ export function TransactionCalendar({
     return map
   }, [transactions])
 
-  const year = Number(month.slice(0, 4))
-  const mon = Number(month.slice(5, 7))
-  const firstWeekday = new Date(year, mon - 1, 1).getDay()
-  const daysInMonth = new Date(year, mon, 0).getDate()
-  const today = todayISO()
-
-  const cells: (number | null)[] = [
-    ...Array.from({ length: firstWeekday }, () => null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ]
+  const viewDate = toCalendarDate(`${month}-01`)
+  const selected = selectedDate ? toCalendarDate(selectedDate) : undefined
 
   return (
-    <div className="rounded-lg border">
-      <div className="grid grid-cols-7 border-b text-center text-xs text-muted-foreground">
-        {WEEKDAYS.map((w, i) => (
-          <div
-            key={w}
-            className={cn('py-2', i === 0 && 'text-rose-400', i === 6 && 'text-sky-400')}
-          >
-            {w}
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-7">
-        {cells.map((day, idx) => {
-          if (day === null) {
-            return <div key={`blank-${idx}`} className="min-h-20 border-b border-r" />
-          }
-          const dateStr = `${month}-${String(day).padStart(2, '0')}`
-          const totals = totalsByDate.get(dateStr)
+    <div className="rounded-r2 border border-stroke-neutral-weak p-x3">
+      <DatePicker
+        aria-label={`${month} 거래 달력`}
+        today={toCalendarDate(todayISO())}
+        viewDate={viewDate}
+        onViewDateChange={(d) => onMonthChange?.(fromCalendarDate(d).slice(0, 7))}
+        value={selected}
+        onValueChange={(d) => onSelectDate(fromCalendarDate(d))}
+        renderDateCellSupplement={({ date }) => {
+          const totals = totalsByDate.get(fromCalendarDate(date))
+          if (!totals) return null
           return (
-            <button
-              key={dateStr}
-              type="button"
-              onClick={() => onSelectDate(dateStr)}
-              className={cn(
-                'flex min-h-20 flex-col items-start gap-0.5 border-b border-r p-1.5 text-left transition-colors hover:bg-accent/50',
-                selectedDate === dateStr && 'bg-accent',
-              )}
-            >
-              <span
-                className={cn(
-                  'text-xs',
-                  dateStr === today
-                    ? 'flex size-5 items-center justify-center rounded-full bg-yellow-300 font-semibold text-zinc-900'
-                    : 'text-muted-foreground',
-                )}
-              >
-                {day}
-              </span>
-              {totals && totals.income > 0 && (
-                <span
-                  className="w-full truncate text-[10px] leading-tight text-emerald-400"
-                  title={`+${formatKRW(totals.income)}`}
-                >
+            <>
+              {totals.income > 0 && (
+                <Text as="span" textStyle="t1Regular" color="fg.positive" maxLines={1}>
                   +{formatKRW(totals.income)}
-                </span>
+                </Text>
               )}
-              {totals && totals.expense > 0 && (
-                <span
-                  className="w-full truncate text-[10px] leading-tight text-rose-400"
-                  title={`-${formatKRW(totals.expense)}`}
-                >
+              {totals.expense > 0 && (
+                <Text as="span" textStyle="t1Regular" color="fg.critical" maxLines={1}>
                   -{formatKRW(totals.expense)}
-                </span>
+                </Text>
               )}
-            </button>
+            </>
           )
-        })}
-      </div>
+        }}
+      />
     </div>
   )
 }

@@ -9,42 +9,47 @@ import {
   type SortingState,
 } from '@tanstack/react-table'
 import {
-  ArrowUpDown,
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  Eye,
-  FileUp,
-  Link2,
-  Pencil,
-  Plus,
-  Table2,
-  Trash2,
-  Unlink,
-} from 'lucide-react'
-
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+  IconArrowUpArrowDownLine,
+  IconArrowUpBracketDownLine,
+  IconChevronLeftLine,
+  IconChevronRightLine,
+  IconEyeLine,
+  IconPaperclipLine,
+  IconPencilLine,
+  IconPlusLine,
+  IconScissorsLine,
+  IconTrashcanLine,
+} from '@karrotmarket/react-monochrome-icon'
+import { Badge, Icon, PrefixIcon, SuffixIcon } from '@seed-design/react'
+import { ActionButton } from 'seed-design/ui/action-button'
 import {
-  Dialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogRoot,
+  AlertDialogTitle,
+} from 'seed-design/ui/alert-dialog'
+import {
+  DialogAction,
+  DialogBody,
   DialogContent,
-  DialogDescription,
   DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { DatePicker } from '@/components/ui/date-picker'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { MonthPicker } from '@/components/ui/month-picker'
-import { ScrollArea } from '@/components/ui/scroll-area'
+  DialogRoot,
+} from 'seed-design/ui/dialog'
 import {
-  Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectRoot,
   SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+} from 'seed-design/ui/select'
+import { SegmentedControl, SegmentedControlItem } from 'seed-design/ui/segmented-control'
+import { TextField, TextFieldInput } from 'seed-design/ui/text-field'
+
+import { DateField } from '@/components/ui/DateField'
+import { MonthField } from '@/components/ui/MonthField'
 import {
   Table,
   TableBody,
@@ -119,12 +124,12 @@ const emptyForm = (): FormState => ({
   memo: '',
 })
 
-/** 구분별 배지 색 — 금액 텍스트와 같은 의미색(수입=녹/지출=적/이체=청)의 은은한 틴트.
- *  다크 전용 테마라 반투명 배경 + 밝은 동일 계열 글자로 다크 배경에서 가독성을 확보한다. */
-const KIND_BADGE_CLASS: Record<TransactionKind, string> = {
-  income: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/25',
-  expense: 'bg-rose-500/15 text-rose-300 border-rose-500/25',
-  transfer: 'bg-sky-500/15 text-sky-300 border-sky-500/25',
+/** 구분별 배지 톤 — SEED Badge의 역할 토큰에 그대로 얹는다.
+ *  수입=positive(녹) / 지출=critical(적) / 이체=informative(청)로 금액 텍스트와 색을 맞춘다. */
+const KIND_BADGE_TONE: Record<TransactionKind, 'positive' | 'critical' | 'informative'> = {
+  income: 'positive',
+  expense: 'critical',
+  transfer: 'informative',
 }
 
 /** 엑셀 평가액 반영 시 자산 유형 라벨 — 주식은 총합 직접 입력이라 엑셀 반영 대상이 아니다 */
@@ -161,14 +166,20 @@ const LINK_LABEL: Record<LinkType, string> = {
   transfer: '이체 묶음',
   refund: '환불 묶음',
 }
-/** 묶음 배지 — 이체 색(청)과 구분되도록 보라 계열의 은은한 틴트 */
-const LINK_BADGE_CLASS = 'gap-1 bg-violet-500/15 text-violet-300 border-violet-500/25'
+/** 묶음 배지 — 이체(informative)와 구분되도록 SEED 팔레트의 보라 계열을 직접 쓴다.
+ *  '사후 묶음'은 SEED의 역할 토큰(positive/critical/informative/warning)에 대응이 없다. */
+const LINK_BADGE_CLASS =
+  'gap-x1 border-palette-purple-500 bg-palette-purple-800 text-palette-purple-300'
 
 /** 거래 시각 표시 — "HH:MM:SS"/"HH:MM"을 "HH:MM"으로 축약 */
 const formatTime = (time: string) => time.slice(0, 5)
 
 const kindAmountClass = (kind: TransactionKind) =>
-  kind === 'income' ? 'text-emerald-400' : kind === 'expense' ? 'text-rose-400' : 'text-sky-400'
+  kind === 'income'
+    ? 'text-fg-positive'
+    : kind === 'expense'
+      ? 'text-fg-critical'
+      : 'text-fg-informative'
 
 const kindAmountSign = (kind: TransactionKind) =>
   kind === 'income' ? '+' : kind === 'expense' ? '-' : ''
@@ -345,12 +356,13 @@ export function TransactionsPage() {
     }
   }
 
-  const moveCalendarMonth = (delta: number) => {
+  /** 달력이 보는 월을 바꾼다 (페이지 상단 이동 버튼과 DatePicker 자체 헤더가 공유) */
+  const setCalendarMonth = (month: string) => {
     setSelectedDate(null)
-    setFilters({ month: addMonths(calendarMonth, delta) }).catch((e: Error) =>
-      setPageError(e.message),
-    )
+    setFilters({ month }).catch((e: Error) => setPageError(e.message))
   }
+
+  const moveCalendarMonth = (delta: number) => setCalendarMonth(addMonths(calendarMonth, delta))
 
   const openCreate = () => {
     setEditing(null)
@@ -473,19 +485,19 @@ export function TransactionsPage() {
         id: 'date',
         accessorFn: (t) => t.date,
         header: ({ column }) => (
-          <Button
+          <ActionButton
             variant="ghost"
-            size="sm"
+            size="small"
             onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           >
-            날짜 <ArrowUpDown className="size-3" />
-          </Button>
+            날짜 <SuffixIcon svg={<IconArrowUpArrowDownLine />} />
+          </ActionButton>
         ),
         cell: ({ row }) => (
           <div className="flex flex-col whitespace-nowrap tabular-nums">
             <span>{row.original.date}</span>
             {row.original.time && (
-              <span className="text-xs text-muted-foreground">
+              <span className="t2-regular text-fg-neutral-muted">
                 {formatTime(row.original.time)}
               </span>
             )}
@@ -498,7 +510,7 @@ export function TransactionsPage() {
         cell: ({ row }) => {
           const kind = isBundle(row.original) ? bundleDisplay(row.original).kind : row.original.kind
           return (
-            <Badge variant="outline" className={KIND_BADGE_CLASS[kind]}>
+            <Badge variant="weak" tone={KIND_BADGE_TONE[kind]}>
               {KIND_LABEL[kind]}
             </Badge>
           )
@@ -511,11 +523,11 @@ export function TransactionsPage() {
           const t = row.original
           const category = isBundle(t) ? bundleDisplay(t).category_name : t.category_name
           return (
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-x1_5">
               <span>{category}</span>
               {t.link_type && (
                 <Badge variant="outline" className={LINK_BADGE_CLASS}>
-                  <Link2 className="size-3" />
+                  <Icon svg={<IconPaperclipLine />} size="x3" />
                   {LINK_LABEL[t.link_type]}
                 </Badge>
               )}
@@ -527,14 +539,14 @@ export function TransactionsPage() {
         id: 'amount',
         accessorFn: (t) => (isBundle(t) ? bundleDisplay(t).amount : t.amount),
         header: ({ column }) => (
-          <Button
+          <ActionButton
             variant="ghost"
-            size="sm"
+            size="small"
             className="w-full justify-end"
             onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           >
-            금액 <ArrowUpDown className="size-3" />
-          </Button>
+            금액 <SuffixIcon svg={<IconArrowUpArrowDownLine />} />
+          </ActionButton>
         ),
         cell: ({ row }) => {
           const t = row.original
@@ -572,37 +584,37 @@ export function TransactionsPage() {
           // 묶인 행은 "묶음 보기"만 — 수정/삭제는 해제 후 개별 행에서 한다
           if (isBundle(t)) {
             return (
-              <div className="flex justify-end gap-1">
-                <Button
+              <div className="flex justify-end gap-x1">
+                <ActionButton
                   variant="ghost"
-                  size="icon-sm"
+                  size="small" layout="iconOnly"
                   aria-label="묶음 보기"
                   title="묶음 보기"
                   onClick={() => openView(t)}
                 >
-                  <Eye />
-                </Button>
+                  <Icon svg={<IconEyeLine />} />
+                </ActionButton>
               </div>
             )
           }
           return (
-            <div className="flex justify-end gap-1">
-              <Button
+            <div className="flex justify-end gap-x1">
+              <ActionButton
                 variant="ghost"
-                size="icon-sm"
+                size="small" layout="iconOnly"
                 aria-label="거래 수정"
                 onClick={() => openEdit(t)}
               >
-                <Pencil />
-              </Button>
-              <Button
+                <Icon svg={<IconPencilLine />} />
+              </ActionButton>
+              <ActionButton
                 variant="ghost"
-                size="icon-sm"
+                size="small" layout="iconOnly"
                 aria-label="거래 삭제"
                 onClick={() => remove(t.id).catch((e: Error) => setPageError(e.message))}
               >
-                <Trash2 className="text-destructive" />
-              </Button>
+                <Icon svg={<IconTrashcanLine />} />
+              </ActionButton>
             </div>
           )
         },
@@ -989,59 +1001,50 @@ export function TransactionsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-x6">
       {/* 모바일: 제목/액션 세로 적층 + 액션 줄바꿈 허용 (한 줄 강제 시 375px에서 가로 스크롤) */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-semibold">지출/수입 내역</h1>
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col gap-x3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="screen-title shrink-0 whitespace-nowrap">지출/수입 내역</h1>
+        <div className="flex flex-wrap items-center gap-x2">
           <MemberFilterSelect />
-          {/* 전체를 h-8(=select 트리거)로 고정한 세그먼트 컨트롤 — 버튼이 프레임을 꽉 채우도록 h-full + 모서리 클립 */}
-          <div className="flex h-8 overflow-hidden rounded-lg border">
-            <Button
-              variant={view === 'table' ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-full rounded-none"
-              onClick={() => switchView('table')}
-            >
-              <Table2 /> 테이블
-            </Button>
-            <Button
-              variant={view === 'calendar' ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-full rounded-none"
-              onClick={() => switchView('calendar')}
-            >
-              <CalendarDays /> 캘린더
-            </Button>
-          </div>
-          <Button variant="outline" onClick={openImport}>
-            <FileUp /> 엑셀 업로드
-          </Button>
+          {/* 표/캘린더 전환 — 상호배타 뷰 전환은 SEED에서 SegmentedControl의 역할이다 */}
+          <SegmentedControl
+            aria-label="보기 전환"
+            value={view}
+            onValueChange={(v) => switchView(v as 'table' | 'calendar')}
+          >
+            <SegmentedControlItem value="table">테이블</SegmentedControlItem>
+            <SegmentedControlItem value="calendar">캘린더</SegmentedControlItem>
+          </SegmentedControl>
+          <ActionButton variant="neutralOutline" size="small" onClick={openImport}>
+            <PrefixIcon svg={<IconArrowUpBracketDownLine />} />
+            엑셀 업로드
+          </ActionButton>
           {/* 월 미선택(전체 기간)이면 전체 삭제 사고를 막기 위해 비활성 */}
-          <Button
-            variant="outline"
-            className="text-destructive"
+          <ActionButton
+            variant="neutralOutline"
+            size="small"
+            className="text-fg-critical"
             disabled={!filters.month || items.length === 0}
             title={filters.month ? undefined : '삭제할 월을 먼저 선택해주세요'}
             onClick={openBulkDelete}
           >
-            <Trash2 /> 월 전체 삭제
-          </Button>
-          <Button onClick={openCreate}>
-            <Plus /> 거래 추가
-          </Button>
+            <PrefixIcon svg={<IconTrashcanLine />} />월 전체 삭제
+          </ActionButton>
+          <ActionButton size="small" onClick={openCreate}>
+            <PrefixIcon svg={<IconPlusLine />} />
+            거래 추가
+          </ActionButton>
         </div>
       </div>
 
-      {pageError && <p className="text-sm text-destructive">{pageError}</p>}
-      {pageNotice && <p className="text-sm text-muted-foreground">{pageNotice}</p>}
+      {pageError && <p className="t4-regular text-fg-critical">{pageError}</p>}
+      {pageNotice && <p className="t4-regular text-fg-neutral-muted">{pageNotice}</p>}
 
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="space-y-1">
-          <Label htmlFor="filter-month">조회 월</Label>
-          <MonthPicker
-            id="filter-month"
-            className="w-40"
+      <div className="flex flex-wrap items-end gap-x3">
+        <div className="w-48">
+          <MonthField
+            label="조회 월"
             placeholder="전체 기간"
             clearable
             value={filters.month ?? ''}
@@ -1052,11 +1055,12 @@ export function TransactionsPage() {
             }
           />
         </div>
-        <div className="space-y-1">
-          <Label>구분</Label>
-          <Select
-            value={filters.kind ?? 'all'}
-            onValueChange={(v) =>
+        <div className="w-32">
+          <SelectRoot
+            label="구분"
+            size="responsive"
+            value={[filters.kind ?? 'all']}
+            onValueChange={([v]) =>
               // 구분이 바뀌면 다른 구분의 카테고리 필터는 의미가 없으므로 함께 초기화
               setFilters({
                 kind: v === 'all' ? null : (v as TransactionKind),
@@ -1065,63 +1069,61 @@ export function TransactionsPage() {
               }).catch((err: Error) => setPageError(err.message))
             }
           >
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
+            <SelectTrigger aria-label="구분" />
             <SelectContent>
-              <SelectItem value="all">전체</SelectItem>
-              <SelectItem value="income">수입</SelectItem>
-              <SelectItem value="expense">지출</SelectItem>
-              <SelectItem value="transfer">이체</SelectItem>
+              <SelectGroup>
+                              <SelectItem value="all" label="전체" />
+                  <SelectItem value="income" label="수입" />
+                  <SelectItem value="expense" label="지출" />
+                  <SelectItem value="transfer" label="이체" />
+                </SelectGroup>
             </SelectContent>
-          </Select>
+          </SelectRoot>
         </div>
-        <div className="space-y-1">
-          <Label>대분류</Label>
-          <Select
-            value={filters.major ?? 'all'}
-            onValueChange={(v) =>
+        <div className="w-40">
+          <SelectRoot
+            label="대분류"
+            size="responsive"
+            value={[filters.major ?? 'all']}
+            onValueChange={([v]) =>
               setFilters({ major: v === 'all' ? null : v, category_id: null }).catch(
                 (err: Error) => setPageError(err.message),
               )
             }
           >
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
+            <SelectTrigger aria-label="대분류" />
             <SelectContent>
-              <SelectItem value="all">전체</SelectItem>
-              {filterMajors.map((m) => (
-                <SelectItem key={m} value={m}>
-                  {m}
-                </SelectItem>
-              ))}
+              <SelectGroup>
+                              <SelectItem value="all" label="전체" />
+                  {filterMajors.map((m) => (
+                    <SelectItem key={m} value={m} label={m} />
+                  ))}
+                </SelectGroup>
             </SelectContent>
-          </Select>
+          </SelectRoot>
         </div>
         {filters.major && (
-          <div className="space-y-1">
-            <Label>소분류</Label>
-            <Select
-              value={filters.category_id ? String(filters.category_id) : 'all'}
-              onValueChange={(v) =>
+          <div className="w-40">
+            <SelectRoot
+              label="소분류"
+              size="responsive"
+              value={[filters.category_id ? String(filters.category_id) : 'all']}
+              onValueChange={([v]) =>
                 setFilters({ category_id: v === 'all' ? null : Number(v) }).catch(
                   (err: Error) => setPageError(err.message),
                 )
               }
             >
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger aria-label="소분류" />
               <SelectContent>
-                <SelectItem value="all">전체</SelectItem>
-                {filterMinors.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.minor}
-                  </SelectItem>
-                ))}
+                <SelectGroup>
+                              <SelectItem value="all" label="전체" />
+                    {filterMinors.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)} label={c.minor} />
+                    ))}
+                  </SelectGroup>
               </SelectContent>
-            </Select>
+            </SelectRoot>
           </div>
         )}
       </div>
@@ -1129,7 +1131,7 @@ export function TransactionsPage() {
       {view === 'table' ? (
         <>
           {/* 데스크톱(sm+): 표 / 모바일(sm 미만): 카드 목록 — 같은 정렬·페이지네이션 데이터 재사용 */}
-          <div className="hidden rounded-lg border sm:block">
+          <div className="hidden rounded-r2 border sm:block">
             <Table>
               <TableHeader>
                 {table.getHeaderGroups().map((hg) => (
@@ -1149,7 +1151,7 @@ export function TransactionsPage() {
                   <TableRow>
                     <TableCell
                       colSpan={columns.length}
-                      className="py-10 text-center text-muted-foreground"
+                      className="py-x10 text-center text-fg-neutral-muted"
                     >
                       조건에 맞는 거래가 없습니다.
                     </TableCell>
@@ -1170,9 +1172,9 @@ export function TransactionsPage() {
           </div>
 
           {/* 모바일(sm 미만) 전용 카드 목록 — 표와 동일한 행 데이터(정렬·페이지네이션 반영)를 쓴다 */}
-          <div className="space-y-2 sm:hidden">
+          <div className="space-y-(--dimension-x2) sm:hidden">
             {table.getRowModel().rows.length === 0 ? (
-              <p className="rounded-lg border py-10 text-center text-sm text-muted-foreground">
+              <p className="rounded-r2 border py-x10 text-center t4-regular text-fg-neutral-muted">
                 조건에 맞는 거래가 없습니다.
               </p>
             ) : (
@@ -1185,18 +1187,18 @@ export function TransactionsPage() {
                 const category = disp ? disp.category_name : t.category_name
                 const account = accountText(t)
                 return (
-                  <div key={row.id} className="rounded-lg border p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex min-w-0 flex-col gap-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="outline" className={KIND_BADGE_CLASS[kind]}>{KIND_LABEL[kind]}</Badge>
+                  <div key={row.id} className="rounded-r2 border p-x3">
+                    <div className="flex items-start justify-between gap-x2">
+                      <div className="flex min-w-0 flex-col gap-x1">
+                        <div className="flex flex-wrap items-center gap-x2">
+                          <Badge variant="weak" tone={KIND_BADGE_TONE[kind]}>{KIND_LABEL[kind]}</Badge>
                           {t.link_type && (
                             <Badge variant="outline" className={LINK_BADGE_CLASS}>
-                              <Link2 className="size-3" />
+                              <Icon svg={<IconPaperclipLine />} size="x3" />
                               {LINK_LABEL[t.link_type]}
                             </Badge>
                           )}
-                          <span className="text-xs tabular-nums text-muted-foreground">
+                          <span className="t2-regular tabular-nums text-fg-neutral-muted">
                             {t.date}
                             {t.time && ` ${formatTime(t.time)}`}
                           </span>
@@ -1210,47 +1212,47 @@ export function TransactionsPage() {
                         {formatNumber(amount)}
                       </span>
                     </div>
-                    <div className="mt-2 flex items-end justify-between gap-2">
-                      <div className="flex min-w-0 flex-col text-xs text-muted-foreground">
+                    <div className="mt-x2 flex items-end justify-between gap-x2">
+                      <div className="flex min-w-0 flex-col t2-regular text-fg-neutral-muted">
                         <span className="truncate">
                           {account}
                           {t.member_name ? ` · ${t.member_name}` : ''}
                         </span>
                         {t.memo && <span className="truncate">{t.memo}</span>}
                       </div>
-                      <div className="flex shrink-0 items-center gap-2">
+                      <div className="flex shrink-0 items-center gap-x2">
                         {bundle ? (
-                          <Button
+                          <ActionButton
                             variant="ghost"
-                            size="icon-sm"
+                            size="small" layout="iconOnly"
                             className={touchTarget}
                             aria-label="묶음 보기"
                             onClick={() => openView(t)}
                           >
-                            <Eye />
-                          </Button>
+                            <Icon svg={<IconEyeLine />} />
+                          </ActionButton>
                         ) : (
                           <>
-                            <Button
+                            <ActionButton
                               variant="ghost"
-                              size="icon-sm"
+                              size="small" layout="iconOnly"
                               className={touchTarget}
                               aria-label="거래 수정"
                               onClick={() => openEdit(t)}
                             >
-                              <Pencil />
-                            </Button>
-                            <Button
+                              <Icon svg={<IconPencilLine />} />
+                            </ActionButton>
+                            <ActionButton
                               variant="ghost"
-                              size="icon-sm"
+                              size="small" layout="iconOnly"
                               className={touchTarget}
                               aria-label="거래 삭제"
                               onClick={() =>
                                 remove(t.id).catch((e: Error) => setPageError(e.message))
                               }
                             >
-                              <Trash2 className="text-destructive" />
-                            </Button>
+                              <Icon svg={<IconTrashcanLine />} />
+                            </ActionButton>
                           </>
                         )}
                       </div>
@@ -1261,42 +1263,42 @@ export function TransactionsPage() {
             )}
           </div>
 
-          <div className="flex items-center justify-end gap-2">
-            <span className="text-sm text-muted-foreground">
+          <div className="flex items-center justify-end gap-x2">
+            <span className="t4-regular text-fg-neutral-muted">
               {table.getState().pagination.pageIndex + 1} / {Math.max(table.getPageCount(), 1)}{' '}
               페이지
             </span>
-            <Button
-              variant="outline"
-              size="sm"
+            <ActionButton
+              variant="neutralOutline"
+              size="small"
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
             >
               이전
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
+            </ActionButton>
+            <ActionButton
+              variant="neutralOutline"
+              size="small"
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
             >
               다음
-            </Button>
+            </ActionButton>
           </div>
         </>
       ) : (
-        <div className="space-y-4">
-          <div className="flex items-center justify-center gap-2">
-            <Button variant="outline" size="icon" onClick={() => moveCalendarMonth(-1)}>
-              <ChevronLeft />
-            </Button>
+        <div className="space-y-(--dimension-x4)">
+          <div className="flex items-center justify-center gap-x2">
+            <ActionButton variant="neutralOutline" size="medium" layout="iconOnly" onClick={() => moveCalendarMonth(-1)}>
+              <Icon svg={<IconChevronLeftLine />} />
+            </ActionButton>
             <span className="w-24 text-center font-medium tabular-nums">{calendarMonth}</span>
-            <Button variant="outline" size="icon" onClick={() => moveCalendarMonth(1)}>
-              <ChevronRight />
-            </Button>
+            <ActionButton variant="neutralOutline" size="medium" layout="iconOnly" onClick={() => moveCalendarMonth(1)}>
+              <Icon svg={<IconChevronRightLine />} />
+            </ActionButton>
           </div>
           {(filters.kind || filters.major || filters.category_id) && (
-            <p className="text-center text-xs text-muted-foreground">
+            <p className="text-center t2-regular text-fg-neutral-muted">
               {[
                 filters.kind && KIND_LABEL[filters.kind],
                 filters.category_id
@@ -1316,12 +1318,13 @@ export function TransactionsPage() {
             transactions={items}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
+            onMonthChange={setCalendarMonth}
           />
           {dayRows && (
-            <div className="space-y-2 rounded-lg border p-4">
-              <p className="text-sm font-medium">{selectedDate} 거래</p>
+            <div className="space-y-(--dimension-x2) rounded-r2 border p-x4">
+              <p className="t4-medium">{selectedDate} 거래</p>
               {dayRows.length === 0 && (
-                <p className="text-sm text-muted-foreground">이 날의 거래가 없습니다.</p>
+                <p className="t4-regular text-fg-neutral-muted">이 날의 거래가 없습니다.</p>
               )}
               {dayRows.map((t) => {
                 const bundle = isBundle(t)
@@ -1331,58 +1334,58 @@ export function TransactionsPage() {
                 const category = disp ? disp.category_name : t.category_name
                 const account = accountText(t)
                 return (
-                  <div key={t.id} className="flex items-center justify-between gap-2 text-sm">
-                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-                      <Badge variant="outline" className={KIND_BADGE_CLASS[kind]}>{KIND_LABEL[kind]}</Badge>
+                  <div key={t.id} className="flex items-center justify-between gap-x2 t4-regular">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-x2 gap-y-x0_5">
+                      <Badge variant="weak" tone={KIND_BADGE_TONE[kind]}>{KIND_LABEL[kind]}</Badge>
                       {t.link_type && (
                         <Badge variant="outline" className={LINK_BADGE_CLASS}>
-                          <Link2 className="size-3" />
+                          <Icon svg={<IconPaperclipLine />} size="x3" />
                           {LINK_LABEL[t.link_type]}
                         </Badge>
                       )}
                       <span className="min-w-0 truncate">{category}</span>
-                      <span className="min-w-0 truncate text-xs text-muted-foreground">
+                      <span className="min-w-0 truncate t2-regular text-fg-neutral-muted">
                         {account}
                       </span>
                       {t.memo && (
-                        <span className="min-w-0 truncate text-xs text-muted-foreground">{t.memo}</span>
+                        <span className="min-w-0 truncate t2-regular text-fg-neutral-muted">{t.memo}</span>
                       )}
                     </div>
-                    <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-x2">
                       <span className={kindAmountClass(kind)}>
                         {kindAmountSign(kind)}
                         {formatNumber(amount)}
                       </span>
                       {bundle ? (
-                        <Button
+                        <ActionButton
                           variant="ghost"
-                          size="icon-sm"
+                          size="small" layout="iconOnly"
                           className={touchTarget}
                           aria-label="묶음 보기"
                           onClick={() => openView(t)}
                         >
-                          <Eye />
-                        </Button>
+                          <Icon svg={<IconEyeLine />} />
+                        </ActionButton>
                       ) : (
                         <>
-                          <Button
+                          <ActionButton
                             variant="ghost"
-                            size="icon-sm"
+                            size="small" layout="iconOnly"
                             className={touchTarget}
                             aria-label="거래 수정"
                             onClick={() => openEdit(t)}
                           >
-                            <Pencil />
-                          </Button>
-                          <Button
+                            <Icon svg={<IconPencilLine />} />
+                          </ActionButton>
+                          <ActionButton
                             variant="ghost"
-                            size="icon-sm"
+                            size="small" layout="iconOnly"
                             className={touchTarget}
                             aria-label="거래 삭제"
                             onClick={() => remove(t.id).catch((e: Error) => setPageError(e.message))}
                           >
-                            <Trash2 className="text-destructive" />
-                          </Button>
+                            <Icon svg={<IconTrashcanLine />} />
+                          </ActionButton>
                         </>
                       )}
                     </div>
@@ -1394,43 +1397,31 @@ export function TransactionsPage() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        {/* 필드가 많아 짧은 뷰포트에서 세로로 넘칠 수 있으므로, import 다이얼로그와 동일하게
-            헤더/푸터는 고정하고 본문만 스크롤시킨다 (grid 자식이 줄어들 수 있게 min-h-0 필요) */}
-        <DialogContent className="sm:max-w-md max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto]">
-          <DialogHeader>
-            <DialogTitle>{editing ? '거래 수정' : '거래 추가'}</DialogTitle>
-            <DialogDescription>
-              {editing ? '거래 내용을 수정합니다.' : '새 지출/수입/이체 거래를 기록합니다.'}
-            </DialogDescription>
-          </DialogHeader>
-          {/* pr-3: 스크롤바가 콘텐츠와 겹치지 않게 여백 확보 */}
-          <ScrollArea className="min-h-0 pr-3">
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="tx-date">날짜</Label>
-                <DatePicker
-                  id="tx-date"
+      <DialogRoot open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent
+          title={editing ? '거래 수정' : '거래 추가'}
+          description={editing ? '거래 내용을 수정합니다.' : '새 지출/수입/이체 거래를 기록합니다.'}
+        >
+          {/* 필드가 많아 짧은 뷰포트에서 넘친다 — DialogBody가 자체적으로 본문만 스크롤시킨다 */}
+          <DialogBody>
+            <div className="flex flex-col gap-x4">
+              <div className="grid grid-cols-2 gap-x3">
+                <DateField
+                  label="날짜"
                   value={form.date}
                   onChange={(date) => setForm({ ...form, date })}
                 />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="tx-time">시간 (선택)</Label>
-                <Input
-                  id="tx-time"
-                  type="time"
-                  step="1"
+                <TextField
+                  label="시간 (선택)"
                   value={form.time}
-                  onChange={(e) => setForm({ ...form, time: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>구분</Label>
-                <Select
-                  value={form.kind}
-                  onValueChange={(v) =>
+                  onValueChange={({ value }) => setForm({ ...form, time: value })}
+                >
+                  <TextFieldInput type="time" step="1" aria-label="시간" />
+                </TextField>
+                <SelectRoot
+                  label="구분"
+                  value={[form.kind]}
+                  onValueChange={([v]) =>
                     setForm({
                       ...form,
                       kind: v as TransactionKind,
@@ -1440,209 +1431,178 @@ export function TransactionsPage() {
                     })
                   }
                 >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger aria-label="구분" />
                   <SelectContent>
-                    <SelectItem value="expense">지출</SelectItem>
-                    <SelectItem value="income">수입</SelectItem>
-                    <SelectItem value="transfer">이체</SelectItem>
+                    <SelectGroup>
+                              <SelectItem value="expense" label="지출" />
+                        <SelectItem value="income" label="수입" />
+                        <SelectItem value="transfer" label="이체" />
+                      </SelectGroup>
                   </SelectContent>
-                </Select>
+                </SelectRoot>
               </div>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="tx-amount">금액 (원)</Label>
-              <Input
-                id="tx-amount"
-                type="number"
-                min={1}
-                placeholder="예: 15000"
+              <TextField
+                label="금액 (원)"
                 value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: e.target.value })}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>대분류</Label>
-                <Select
-                  value={form.category_major || undefined}
-                  onValueChange={(v) => setForm({ ...form, category_major: v, category_id: '' })}
+                onValueChange={({ value }) => setForm({ ...form, amount: value })}
+              >
+                <TextFieldInput type="number" min={1} placeholder="예: 15000" />
+              </TextField>
+              <div className="grid grid-cols-2 gap-x3">
+                <SelectRoot
+                  label="대분류"
+                  value={form.category_major ? [form.category_major] : []}
+                  onValueChange={([v]) =>
+                    setForm({ ...form, category_major: v ?? '', category_id: '' })
+                  }
                 >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="선택" />
-                  </SelectTrigger>
+                  <SelectTrigger aria-label="대분류" placeholder="선택" />
                   <SelectContent>
-                    {formMajors.map((m) => (
-                      <SelectItem key={m} value={m}>
-                        {m}
-                      </SelectItem>
-                    ))}
+                    <SelectGroup>
+                        {formMajors.map((m) => (
+                          <SelectItem key={m} value={m} label={m} />
+                        ))}
+                      </SelectGroup>
                   </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>소분류</Label>
-                <Select
-                  value={form.category_id || undefined}
-                  onValueChange={(v) => setForm({ ...form, category_id: v })}
+                </SelectRoot>
+                <SelectRoot
+                  label="소분류"
+                  value={form.category_id ? [form.category_id] : []}
+                  onValueChange={([v]) => setForm({ ...form, category_id: v ?? '' })}
                 >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={form.category_major ? '선택' : '대분류 먼저'} />
-                  </SelectTrigger>
+                  <SelectTrigger
+                    aria-label="소분류"
+                    placeholder={form.category_major ? '선택' : '대분류 먼저'}
+                  />
                   <SelectContent>
-                    {formMinors.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)}>
-                        {c.minor}
-                      </SelectItem>
-                    ))}
+                    <SelectGroup>
+                        {formMinors.map((c) => (
+                          <SelectItem key={c.id} value={String(c.id)} label={c.minor} />
+                        ))}
+                      </SelectGroup>
                   </SelectContent>
-                </Select>
+                </SelectRoot>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>{form.kind === 'transfer' ? '출금 계정' : '자산 계정'}</Label>
-                <Select
-                  value={form.account_id || undefined}
-                  onValueChange={(v) => {
+              <div className="grid grid-cols-2 gap-x3">
+                <SelectRoot
+                  label={form.kind === 'transfer' ? '출금 계정' : '자산 계정'}
+                  value={form.account_id ? [form.account_id] : []}
+                  onValueChange={([v]) => {
                     // 간편결제가 아닌 계정으로 바꾸면 건별 연결은 의미가 없어져 비운다
                     const isEasyPay = accounts.find((a) => String(a.id) === v)?.type === 'easy_pay'
                     setForm({
                       ...form,
-                      account_id: v,
+                      account_id: v ?? '',
                       linked_account_id: isEasyPay ? form.linked_account_id : 'none',
                     })
                   }}
                 >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="선택" />
-                  </SelectTrigger>
+                  <SelectTrigger aria-label="자산 계정" placeholder="선택" />
                   <SelectContent>
-                    {accounts
-                      .filter((a) => a.is_active)
-                      .map((a) => (
-                        <SelectItem key={a.id} value={String(a.id)}>
-                          {a.name}
-                        </SelectItem>
-                      ))}
+                    <SelectGroup>
+                        {accounts
+                          .filter((a) => a.is_active)
+                          .map((a) => (
+                            <SelectItem key={a.id} value={String(a.id)} label={a.name} />
+                          ))}
+                      </SelectGroup>
                   </SelectContent>
-                </Select>
-              </div>
-              {form.kind === 'transfer' && (
-                <div className="space-y-1">
-                  <Label>입금 계정</Label>
-                  <Select
-                    value={form.counter_account_id || undefined}
-                    onValueChange={(v) => setForm({ ...form, counter_account_id: v })}
+                </SelectRoot>
+                {form.kind === 'transfer' && (
+                  <SelectRoot
+                    label="입금 계정"
+                    value={form.counter_account_id ? [form.counter_account_id] : []}
+                    onValueChange={([v]) => setForm({ ...form, counter_account_id: v ?? '' })}
                   >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="선택" />
-                    </SelectTrigger>
+                    <SelectTrigger aria-label="입금 계정" placeholder="선택" />
                     <SelectContent>
-                      {accounts
-                        .filter((a) => a.is_active && String(a.id) !== form.account_id)
-                        .map((a) => (
-                          <SelectItem key={a.id} value={String(a.id)}>
-                            {a.name}
-                          </SelectItem>
-                        ))}
+                      <SelectGroup>
+                          {accounts
+                            .filter((a) => a.is_active && String(a.id) !== form.account_id)
+                            .map((a) => (
+                              <SelectItem key={a.id} value={String(a.id)} label={a.name} />
+                            ))}
+                        </SelectGroup>
                     </SelectContent>
-                  </Select>
-                </div>
-              )}
-              {formAccountIsEasyPay && (
-                <div className="col-span-2 space-y-1">
-                  <Label>연결 계정 (선택)</Label>
-                  <Select
-                    value={form.linked_account_id}
-                    onValueChange={(v) => setForm({ ...form, linked_account_id: v })}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">선택 안 함 (계정 기본 연결)</SelectItem>
-                      {linkableAccounts.map((a) => (
-                        <SelectItem key={a.id} value={String(a.id)}>
-                          {a.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    이 건이 실제로 결제된 카드/은행 계정이에요. 고르지 않으면 계정에 설정된 기본
-                    연결을 따라가요.
-                  </p>
-                </div>
-              )}
-              <div className="space-y-1">
-                <Label>구성원</Label>
-                <Select
-                  value={form.member_id}
-                  onValueChange={(v) => setForm({ ...form, member_id: v })}
+                  </SelectRoot>
+                )}
+                {formAccountIsEasyPay && (
+                  <div className="col-span-2">
+                    <SelectRoot
+                      label="연결 계정 (선택)"
+                      description="이 건이 실제로 결제된 카드/은행 계정이에요. 고르지 않으면 계정에 설정된 기본 연결을 따라가요."
+                      value={[form.linked_account_id]}
+                      onValueChange={([v]) => setForm({ ...form, linked_account_id: v })}
+                    >
+                      <SelectTrigger aria-label="연결 계정" />
+                      <SelectContent>
+                        <SelectGroup>
+                              <SelectItem value="none" label="선택 안 함 (계정 기본 연결)" />
+                            {linkableAccounts.map((a) => (
+                              <SelectItem key={a.id} value={String(a.id)} label={a.name} />
+                            ))}
+                          </SelectGroup>
+                      </SelectContent>
+                    </SelectRoot>
+                  </div>
+                )}
+                <SelectRoot
+                  label="구성원"
+                  value={[form.member_id]}
+                  onValueChange={([v]) => setForm({ ...form, member_id: v })}
                 >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger aria-label="구성원" />
                   <SelectContent>
-                    <SelectItem value="none">선택 안 함</SelectItem>
-                    {members.map((m) => (
-                      <SelectItem key={m.id} value={String(m.id)}>
-                        {m.name}
-                      </SelectItem>
-                    ))}
+                    <SelectGroup>
+                              <SelectItem value="none" label="선택 안 함" />
+                        {members.map((m) => (
+                          <SelectItem key={m.id} value={String(m.id)} label={m.name} />
+                        ))}
+                      </SelectGroup>
                   </SelectContent>
-                </Select>
+                </SelectRoot>
+                <div className="col-span-2">
+                  <TextField
+                    label="메모"
+                    value={form.memo}
+                    onValueChange={({ value }) => setForm({ ...form, memo: value })}
+                  >
+                    <TextFieldInput placeholder="선택 입력" />
+                  </TextField>
+                </div>
               </div>
-              <div className="col-span-2 space-y-1">
-                <Label htmlFor="tx-memo">메모</Label>
-                <Input
-                  id="tx-memo"
-                  placeholder="선택 입력"
-                  value={form.memo}
-                  onChange={(e) => setForm({ ...form, memo: e.target.value })}
-                />
-              </div>
+              {formError && <p className="t4-regular text-fg-critical">{formError}</p>}
             </div>
-            {formError && <p className="text-sm text-destructive">{formError}</p>}
-          </div>
-          </ScrollArea>
-          {/* footer 좌측 끝에 "묶음" 진입 버튼 — 수정 중이며 아직 묶이지 않은 수입/지출일 때만.
+          </DialogBody>
+          {/* "묶음" 진입 버튼 — 수정 중이며 아직 묶이지 않은 수입/지출일 때만.
               이체는 묶음(수입+지출) 대상이 아니고, 이미 묶인 거래는 해제 후 수정하도록 안내한다. */}
-          <DialogFooter className="sm:justify-between">
-            {editing && !editing.link_id && editing.kind !== 'transfer' ? (
-              <Button variant="outline" onClick={() => openLinkPicker(editing)}>
-                <Link2 /> 묶음
-              </Button>
-            ) : editing?.link_id ? (
-              <span className="self-center text-xs text-muted-foreground">
-                묶음을 해제한 뒤 수정할 수 있어요
-              </span>
-            ) : (
-              // 좌측 자리 유지용 — 오른쪽 버튼 그룹을 우측에 고정 (추가 모달·이체엔 묶음 없음)
-              <span className="hidden sm:block" />
+          <DialogFooter>
+            {editing && !editing.link_id && editing.kind !== 'transfer' && (
+              <ActionButton variant="neutralOutline" onClick={() => openLinkPicker(editing)}>
+                <PrefixIcon svg={<IconPaperclipLine />} />
+                묶음
+              </ActionButton>
             )}
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                취소
-              </Button>
-              <Button onClick={submit}>{editing ? '수정' : '추가'}</Button>
-            </div>
+            {editing?.link_id && (
+              <p className="t2-regular self-center text-fg-neutral-muted">
+                묶음을 해제한 뒤 수정할 수 있어요
+              </p>
+            )}
+            <DialogAction variant="neutralWeak" onClick={() => setDialogOpen(false)}>
+              취소
+            </DialogAction>
+            {/* 검증 실패 시 다이얼로그를 열어둬야 하므로 DialogAction이 아니라 ActionButton */}
+            <ActionButton onClick={submit}>{editing ? '수정' : '추가'}</ActionButton>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </DialogRoot>
 
-      <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        {/* 본문만 스크롤시키고 헤더/푸터는 고정 — grid 자식이 줄어들 수 있게 min-h-0 필요 */}
+      <DialogRoot open={importOpen} onOpenChange={setImportOpen}>
+        {/* 계정 매핑/검토 단계는 표가 넓어 다이얼로그 폭을 넓힌다 */}
         <DialogContent
-          className={`max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] ${
-            importPreview && !importResult ? 'sm:max-w-2xl' : 'sm:max-w-md'
-          }`}
-        >
-          <DialogHeader>
-            <DialogTitle>
-              {importResult
+          maxWidth={importPreview && !importResult ? '42rem' : '28rem'}
+          title={
+              importResult
                 ? '엑셀 업로드'
                 : importStep === 'accounts'
                   ? '자산 계정 매핑 (1/2)'
@@ -1650,10 +1610,10 @@ export function TransactionsPage() {
                     ? previewReview.length > 0
                       ? '이체 내역 검토 (2/2)'
                       : '업로드 내용 확인 (2/2)'
-                    : '엑셀 업로드'}
-            </DialogTitle>
-            <DialogDescription>
-              {importResult
+                    : '엑셀 업로드'
+          }
+          description={
+              importResult
                 ? '뱅크샐러드 내보내기 파일의 "가계부 내역"에서 선택한 달만 가져옵니다.'
                 : importStep === 'accounts'
                   ? '엑셀에 등장하는 계정을 먼저 정리해요. 기존 계정에 연결하거나, 새로 만들거나, 이번엔 제외할 수 있어요.'
@@ -1661,13 +1621,12 @@ export function TransactionsPage() {
                     ? previewReview.length > 0
                       ? '이체 타입 행은 자동 반영되지 않아요. 행마다 처리 방법을 정해주세요.'
                       : '아래 내용으로 가져올게요. 확인 후 진행해주세요.'
-                    : '뱅크샐러드 내보내기 파일의 "가계부 내역"에서 선택한 달만 가져옵니다.'}
-            </DialogDescription>
-          </DialogHeader>
-          {/* pr-3: 스크롤바가 Root 우측에 겹쳐 그려지므로 콘텐츠와 겹치지 않게 여백 확보 */}
-          <ScrollArea className="min-h-0 pr-3">
+                    : '뱅크샐러드 내보내기 파일의 "가계부 내역"에서 선택한 달만 가져옵니다.'
+          }
+        >
+          <DialogBody>
           {importResult ? (
-            <div className="space-y-3 text-sm">
+            <div className="space-y-(--dimension-x3) t4-regular">
               <p>
                 <span className="font-medium">{importResult.month}</span> 가져오기 완료 — 등록{' '}
                 {importResult.created_count}건
@@ -1678,30 +1637,30 @@ export function TransactionsPage() {
                 {importResult.skipped.length > 0 && `, 건너뜀 ${importResult.skipped.length}건`}
               </p>
               {importResult.created_categories.length > 0 && (
-                <p className="text-muted-foreground">
+                <p className="text-fg-neutral-muted">
                   새 카테고리: {importResult.created_categories.join(', ')}
                 </p>
               )}
               {importCreatedAccounts.length > 0 && (
-                <p className="text-muted-foreground">
+                <p className="text-fg-neutral-muted">
                   새 자산 계정: {importCreatedAccounts.join(', ')}
                 </p>
               )}
               {importResult.valuation_count > 0 && (
-                <p className="text-muted-foreground">
+                <p className="text-fg-neutral-muted">
                   부동산 평가액 {importResult.valuation_count}건을 오늘 날짜로 반영했어요.
                 </p>
               )}
               {importResult.loan_count > 0 && (
-                <p className="text-muted-foreground">
+                <p className="text-fg-neutral-muted">
                   대출 잔액 {importResult.loan_count}건을 오늘 날짜로 반영했어요.
                 </p>
               )}
               {/* 다이얼로그 본문 전체가 스크롤되므로 여기서 다시 스크롤하지 않는다 */}
               {importResult.skipped.length > 0 && (
-                <div className="space-y-1 rounded-md border p-2">
+                <div className="space-y-(--dimension-x1) rounded-r1_5 border p-x2">
                   {importResult.skipped.map((s) => (
-                    <p key={s.row} className="text-xs text-muted-foreground">
+                    <p key={s.row} className="t2-regular text-fg-neutral-muted">
                       {s.row}행: {s.reason}
                     </p>
                   ))}
@@ -1709,25 +1668,25 @@ export function TransactionsPage() {
               )}
             </div>
           ) : importPreview && importStep === 'accounts' ? (
-            <div className="space-y-3 text-sm">
-              <p className="text-xs text-muted-foreground">
+            <div className="space-y-(--dimension-x3) t4-regular">
+              <p className="t2-regular text-fg-neutral-muted">
                 엑셀에 나온 계정 {importPreview.account_sources.length}개예요. 여기서 확정하면
                 계정이 바로 만들어져요 (업로드를 취소해도 계정은 남고, 설정에서 지울 수 있어요).
               </p>
-              <div className="space-y-2">
+              <div className="space-y-(--dimension-x2)">
                 {importPreview.account_sources.map((s) => {
                   const key = sourceKey(s)
                   const choice = mappingChoices[key]
                   const candidates = mappingCandidates(s)
                   const requiredType = SOURCE_REQUIRED_TYPE[s.kind]
                   return (
-                    <div key={key} className="space-y-2 rounded-md border p-2">
-                      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-                        <span className="flex min-w-0 items-center gap-1">
-                          <Badge variant="secondary">{SOURCE_KIND_LABEL[s.kind]}</Badge>
+                    <div key={key} className="space-y-(--dimension-x2) rounded-r1_5 border p-x2">
+                      <div className="flex flex-wrap items-center justify-between gap-x-x2 gap-y-x1">
+                        <span className="flex min-w-0 items-center gap-x1">
+                          <Badge variant="weak">{SOURCE_KIND_LABEL[s.kind]}</Badge>
                           <span className="truncate font-medium">{s.name}</span>
                         </span>
-                        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                        <span className="shrink-0 t2-regular text-fg-neutral-muted tabular-nums">
                           {s.kind === 'ledger'
                             ? `${s.row_count}건`
                             : s.amount !== null
@@ -1735,10 +1694,10 @@ export function TransactionsPage() {
                               : ''}
                         </span>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Select
-                          value={choice?.action ?? 'create'}
-                          onValueChange={(v) =>
+                      <div className="flex flex-wrap items-center gap-x2">
+                        <SelectRoot
+                          value={[choice?.action ?? 'create']}
+                          onValueChange={([v]) =>
                             setMappingChoices((prev) => ({
                               ...prev,
                               [key]: {
@@ -1753,74 +1712,75 @@ export function TransactionsPage() {
                             }))
                           }
                         >
-                          <SelectTrigger className="w-32">
-                            <SelectValue />
-                          </SelectTrigger>
+                          <SelectTrigger className="w-32" />
                           <SelectContent>
-                            <SelectItem value="link" disabled={candidates.length === 0}>
-                              기존 계정 연결
-                            </SelectItem>
-                            <SelectItem value="create">새로 만들기</SelectItem>
-                            <SelectItem value="exclude">이번엔 제외</SelectItem>
+                            <SelectGroup>
+                              <SelectItem
+                                value="link"
+                                disabled={candidates.length === 0}
+                                label="기존 계정 연결"
+                              />
+                              <SelectItem value="create" label="새로 만들기" />
+                              <SelectItem value="exclude" label="이번엔 제외" />
+                            </SelectGroup>
                           </SelectContent>
-                        </Select>
+                        </SelectRoot>
                         {choice?.action === 'link' && (
-                          <Select
-                            value={choice.account_id || undefined}
-                            onValueChange={(v) =>
+                          <SelectRoot
+                            value={choice.account_id ? [choice.account_id] : []}
+                            onValueChange={([v]) =>
                               setMappingChoices((prev) => ({
                                 ...prev,
                                 [key]: { ...prev[key], account_id: v },
                               }))
                             }
                           >
-                            <SelectTrigger className="w-44">
-                              <SelectValue placeholder="연결할 계정" />
-                            </SelectTrigger>
+                            <SelectTrigger placeholder="연결할 계정" className="w-44" />
                             <SelectContent>
-                              {/* 같은 이름·다른 유형 계정이 공존할 수 있어(복합 유니크) 유형을
-                                  함께 보여야 고를 수 있다. 비활성 계정도 후보에 남으므로 표시 */}
-                              {candidates.map((a) => (
-                                <SelectItem key={a.id} value={String(a.id)}>
-                                  {a.name} · {accountTypeLabel(a.type)}
-                                  {a.is_active ? '' : ' (비활성)'}
-                                </SelectItem>
-                              ))}
+                              <SelectGroup>                                {/* 같은 이름·다른 유형 계정이 공존할 수 있어(복합 유니크) 유형을
+                                    함께 보여야 고를 수 있다. 비활성 계정도 후보에 남으므로 표시 */}
+                                {candidates.map((a) => (
+                                  <SelectItem
+                                    key={a.id}
+                                    value={String(a.id)}
+                                    label={`${a.name} · ${accountTypeLabel(a.type)}${
+                                      a.is_active ? '' : ' (비활성)'
+                                    }`}
+                                  />
+                                ))}
+                              </SelectGroup>
                             </SelectContent>
-                          </Select>
+                          </SelectRoot>
                         )}
                         {choice?.action === 'create' &&
                           (requiredType ? (
                             // 부동산·대출 항목은 유형이 고정이라 선택지를 주지 않는다
-                            <span className="text-xs text-muted-foreground">
+                            <span className="t2-regular text-fg-neutral-muted">
                               {SOURCE_KIND_LABEL[s.kind]} 계정으로 생성
                             </span>
                           ) : (
-                            <Select
-                              value={choice.type}
-                              onValueChange={(v) =>
+                            <SelectRoot
+                              value={[choice.type]}
+                              onValueChange={([v]) =>
                                 setMappingChoices((prev) => ({
                                   ...prev,
                                   [key]: { ...prev[key], type: v as AccountType },
                                 }))
                               }
                             >
-                              <SelectTrigger className="w-36">
-                                <SelectValue />
-                              </SelectTrigger>
+                              <SelectTrigger className="w-36" />
                               {/* 간편결제도 연결 계정 없이 만들 수 있어 전 유형을 고를 수 있다 */}
                               <SelectContent>
-                                {ACCOUNT_TYPES.map((t) => (
-                                  <SelectItem key={t.value} value={t.value}>
-                                    {t.label}
-                                  </SelectItem>
-                                ))}
+                                <SelectGroup>                                  {ACCOUNT_TYPES.map((t) => (
+                                    <SelectItem key={t.value} value={t.value} label={t.label} />
+                                  ))}
+                                </SelectGroup>
                               </SelectContent>
-                            </Select>
+                            </SelectRoot>
                           ))}
                       </div>
                       {choice?.action === 'exclude' && (
-                        <p className="text-xs text-amber-400">
+                        <p className="t2-regular text-fg-warning">
                           {s.kind === 'ledger'
                             ? '이 결제수단의 거래는 이번 업로드에서 등록되지 않아요.'
                             : '이 항목은 이번 업로드에서 반영되지 않아요.'}
@@ -1830,11 +1790,11 @@ export function TransactionsPage() {
                   )
                 })}
               </div>
-              {importError && <p className="text-sm text-destructive">{importError}</p>}
+              {importError && <p className="t4-regular text-fg-critical">{importError}</p>}
             </div>
           ) : importPreview ? (
-            <div className="space-y-3 text-sm">
-              <p className="text-xs text-muted-foreground">
+            <div className="space-y-(--dimension-x3) t4-regular">
+              <p className="t2-regular text-fg-neutral-muted">
                 {previewReview.length > 0 ? (
                   <>
                     수입/지출 {previewImportableCount}건은 바로 등록돼요. 아래 이체{' '}
@@ -1846,7 +1806,7 @@ export function TransactionsPage() {
                 )}
               </p>
               {resolvedMappings.some((m) => m.action === 'exclude') && (
-                <p className="text-xs text-amber-400">
+                <p className="t2-regular text-fg-warning">
                   제외한 계정({resolvedMappings
                     .filter((m) => m.action === 'exclude')
                     .map((m) => m.name)
@@ -1854,18 +1814,18 @@ export function TransactionsPage() {
                 </p>
               )}
               {previewValuations.length > 0 && (
-                <div className="space-y-1 rounded-md border p-2">
-                  <p className="text-xs font-medium">
+                <div className="space-y-(--dimension-x1) rounded-r1_5 border p-x2">
+                  <p className="t2-medium">
                     반영될 평가액 — 부동산 {previewValuations.length}건 (오늘 날짜)
                   </p>
-                  <div className="space-y-1">
+                  <div className="space-y-(--dimension-x1)">
                     {previewValuations.map((v, i) => (
                       <div
                         key={`${i}-${v.account_type}-${v.product_name}`}
-                        className="flex items-center justify-between gap-2 text-xs"
+                        className="flex items-center justify-between gap-x2 t2-regular"
                       >
-                        <span className="flex min-w-0 items-center gap-1 text-muted-foreground">
-                          <Badge variant="secondary">
+                        <span className="flex min-w-0 items-center gap-x1 text-fg-neutral-muted">
+                          <Badge variant="weak">
                             {VALUATION_TYPE_LABEL[v.account_type]}
                           </Badge>
                           <span className="truncate">{v.product_name}</span>
@@ -1877,21 +1837,21 @@ export function TransactionsPage() {
                 </div>
               )}
               {previewLiabilities.length > 0 && (
-                <div className="space-y-1 rounded-md border p-2">
-                  <p className="text-xs font-medium">
+                <div className="space-y-(--dimension-x1) rounded-r1_5 border p-x2">
+                  <p className="t2-medium">
                     반영될 대출 잔액 — {previewLiabilities.length}건 (오늘 날짜, 총자산 차감)
                   </p>
-                  <div className="space-y-1">
+                  <div className="space-y-(--dimension-x1)">
                     {previewLiabilities.map((v, i) => (
                       <div
                         key={`${i}-loan-${v.product_name}`}
-                        className="flex items-center justify-between gap-2 text-xs"
+                        className="flex items-center justify-between gap-x2 t2-regular"
                       >
-                        <span className="flex min-w-0 items-center gap-1 text-muted-foreground">
-                          <Badge variant="secondary">대출</Badge>
+                        <span className="flex min-w-0 items-center gap-x1 text-fg-neutral-muted">
+                          <Badge variant="weak">대출</Badge>
                           <span className="truncate">{v.product_name}</span>
                         </span>
-                        <span className="shrink-0 tabular-nums text-rose-400">
+                        <span className="shrink-0 tabular-nums text-fg-critical">
                           -{formatKRW(v.value)}
                         </span>
                       </div>
@@ -1900,7 +1860,7 @@ export function TransactionsPage() {
                 </div>
               )}
               {/* 다이얼로그 본문 전체가 스크롤되므로 여기서 다시 스크롤하지 않는다 */}
-              <div className="space-y-2">
+              <div className="space-y-(--dimension-x2)">
                 {previewReview.map((r) => {
                   const decision = reviewDecisions[r.row]
                   const pairAuto = isPairAuto(r.row, r.pair_row)
@@ -1908,24 +1868,24 @@ export function TransactionsPage() {
                     ? previewReview.find((p) => p.row === r.pair_row)
                     : undefined
                   return (
-                    <div key={r.row} className="space-y-2 rounded-md border p-2">
-                      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs">
-                        <span className="text-muted-foreground">
+                    <div key={r.row} className="space-y-(--dimension-x2) rounded-r1_5 border p-x2">
+                      <div className="flex flex-wrap items-center justify-between gap-x-x2 gap-y-x1 t2-regular">
+                        <span className="text-fg-neutral-muted">
                           {r.date} · {r.minor === '미분류' ? r.major : `${r.major} > ${r.minor}`}{' '}
                           · {r.account_name}
                         </span>
-                        <span className={r.amount > 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                        <span className={r.amount > 0 ? 'text-fg-positive' : 'text-fg-critical'}>
                           {r.amount > 0 ? '+' : ''}
                           {formatKRW(r.amount)}
                         </span>
                       </div>
                       {r.description && (
-                        <p className="truncate text-xs text-muted-foreground">{r.description}</p>
+                        <p className="truncate t2-regular text-fg-neutral-muted">{r.description}</p>
                       )}
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Select
-                          value={decision?.action ?? r.suggested}
-                          onValueChange={(v) =>
+                      <div className="flex flex-wrap items-center gap-x2">
+                        <SelectRoot
+                          value={[decision?.action ?? r.suggested]}
+                          onValueChange={([v]) =>
                             setReviewDecisions((prev) => ({
                               ...prev,
                               [r.row]: {
@@ -1936,50 +1896,45 @@ export function TransactionsPage() {
                             }))
                           }
                         >
-                          <SelectTrigger className="w-28">
-                            <SelectValue />
-                          </SelectTrigger>
+                          <SelectTrigger className="w-28" />
                           <SelectContent>
-                            <SelectItem value="income">수입</SelectItem>
-                            <SelectItem value="expense">지출</SelectItem>
-                            <SelectItem value="transfer">이체</SelectItem>
-                            <SelectItem value="skip">건너뛰기</SelectItem>
+                            <SelectGroup>
+                              <SelectItem value="income" label="수입" />
+                              <SelectItem value="expense" label="지출" />
+                              <SelectItem value="transfer" label="이체" />
+                              <SelectItem value="skip" label="건너뛰기" />
+                            </SelectGroup>
                           </SelectContent>
-                        </Select>
+                        </SelectRoot>
                         {decision?.action === 'transfer' &&
                           (pairAuto ? (
-                            <span className="text-xs text-sky-400">
+                            <span className="t2-regular text-fg-informative">
                               자동 페어 ↔ {pairRow?.account_name} ({r.pair_row}행)
                             </span>
                           ) : (
-                            <Select
-                              value={decision.counter_account_id || undefined}
-                              onValueChange={(v) =>
+                            <SelectRoot
+                              value={decision.counter_account_id ? [decision.counter_account_id] : []}
+                              onValueChange={([v]) =>
                                 setReviewDecisions((prev) => ({
                                   ...prev,
                                   [r.row]: { ...prev[r.row], counter_account_id: v },
                                 }))
                               }
                             >
-                              <SelectTrigger className="w-44">
-                                <SelectValue
-                                  placeholder={r.amount < 0 ? '입금받을 계정' : '출금된 계정'}
-                                />
-                              </SelectTrigger>
+                              <SelectTrigger placeholder={r.amount < 0 ? '입금받을 계정' : '출금된 계정'} className="w-44" />
                               <SelectContent>
-                                {accounts
-                                  .filter((a) => a.is_active && a.name !== r.account_name)
-                                  .map((a) => (
-                                    <SelectItem key={a.id} value={String(a.id)}>
-                                      {a.name}
-                                    </SelectItem>
-                                  ))}
+                                <SelectGroup>                                  {accounts
+                                    .filter((a) => a.is_active && a.name !== r.account_name)
+                                    .map((a) => (
+                                      <SelectItem key={a.id} value={String(a.id)} label={a.name} />
+                                    ))}
+                                </SelectGroup>
                               </SelectContent>
-                            </Select>
+                            </SelectRoot>
                           ))}
                       </div>
                       {r.major === '카드대금' && decision?.action === 'expense' && (
-                        <p className="text-xs text-amber-400">
+                        <p className="t2-regular text-fg-warning">
                           ⚠️ 카드대금을 지출로 등록하면 카드 사용 내역과 이중 계산돼요 —
                           이체(상대: 카드 계정)를 권장해요.
                         </p>
@@ -1988,62 +1943,56 @@ export function TransactionsPage() {
                   )
                 })}
               </div>
-              {importError && <p className="text-sm text-destructive">{importError}</p>}
+              {importError && <p className="t4-regular text-fg-critical">{importError}</p>}
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <Label htmlFor="import-file">엑셀 파일 (.xlsx)</Label>
-                <Input
+            <div className="flex flex-col gap-x4">
+              {/* 파일 입력은 네이티브를 그대로 쓴다 — SEED의 AttachmentField는 이미지 첨부용이다 */}
+              <div className="flex flex-col gap-x1">
+                <label className="t4-medium" htmlFor="import-file">
+                  엑셀 파일 (.xlsx)
+                </label>
+                <input
                   id="import-file"
                   type="file"
                   accept=".xlsx"
+                  className="t4-regular rounded-r2 border border-stroke-neutral-weak bg-bg-layer-default p-x2 file:mr-x2 file:rounded-r1_5 file:border-0 file:bg-bg-neutral-weak file:px-x2 file:py-x1 file:text-fg-neutral"
                   onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
                 />
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="import-month">가져올 월</Label>
-                <MonthPicker
-                  id="import-month"
-                  className="w-40"
-                  value={importMonth}
-                  onChange={setImportMonth}
-                />
+              <div className="w-40">
+                <MonthField label="가져올 월" value={importMonth} onChange={setImportMonth} />
               </div>
-              <div className="space-y-1">
-                <Label>구성원</Label>
-                <Select value={importMemberId || undefined} onValueChange={setImportMemberId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="선택" />
-                  </SelectTrigger>
-                  <SelectContent>
+              <SelectRoot
+                label="구성원"
+                description="업로드되는 모든 거래가 이 구성원의 거래로 기록돼요. 엑셀에 처음 등장하는 자산 계정도 이 구성원의 소유로 생성돼요."
+                value={importMemberId ? [importMemberId] : []}
+                onValueChange={([v]) => setImportMemberId(v ?? '')}
+              >
+                <SelectTrigger aria-label="구성원" placeholder="선택" />
+                <SelectContent>
+                  <SelectGroup>
                     {members.map((m) => (
-                      <SelectItem key={m.id} value={String(m.id)}>
-                        {m.name}
-                      </SelectItem>
+                      <SelectItem key={m.id} value={String(m.id)} label={m.name} />
                     ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  업로드되는 모든 거래가 이 구성원의 거래로 기록돼요. 엑셀에 처음 등장하는
-                  자산 계정도 이 구성원의 소유로 생성돼요.
-                </p>
-              </div>
-              <p className="text-xs text-muted-foreground">
+                  </SelectGroup>
+                </SelectContent>
+              </SelectRoot>
+              <p className="t2-regular text-fg-neutral-muted">
                 해당 월에 같은 구성원으로 업로드한 내역이 있으면 삭제 후 다시 등록돼요. 다른
                 구성원의 업로드 내역과 직접 입력한 거래는 그대로 유지됩니다.
               </p>
-              {importError && <p className="text-sm text-destructive">{importError}</p>}
+              {importError && <p className="t4-regular text-fg-critical">{importError}</p>}
             </div>
           )}
-          </ScrollArea>
+          </DialogBody>
           <DialogFooter>
             {importResult ? (
-              <Button onClick={() => setImportOpen(false)}>닫기</Button>
+              <ActionButton onClick={() => setImportOpen(false)}>닫기</ActionButton>
             ) : importPreview && importStep === 'accounts' ? (
               <>
-                <Button
-                  variant="outline"
+                <ActionButton
+                  variant="neutralOutline"
                   onClick={() => {
                     setImportPreview(null)
                     setImportStep('form')
@@ -2052,15 +2001,15 @@ export function TransactionsPage() {
                   }}
                 >
                   이전
-                </Button>
-                <Button onClick={confirmAccounts} disabled={importing}>
+                </ActionButton>
+                <ActionButton onClick={confirmAccounts} disabled={importing}>
                   {importing ? '계정 정리 중…' : '계정 확정하고 다음'}
-                </Button>
+                </ActionButton>
               </>
             ) : importPreview ? (
               <>
-                <Button
-                  variant="outline"
+                <ActionButton
+                  variant="neutralOutline"
                   onClick={() => {
                     setImportError(null)
                     // 계정 소스가 있으면 매핑 스텝으로, 없으면 입력 화면으로 되돌아간다
@@ -2073,77 +2022,67 @@ export function TransactionsPage() {
                   }}
                 >
                   이전
-                </Button>
-                <Button onClick={confirmReview} disabled={importing}>
+                </ActionButton>
+                <ActionButton onClick={confirmReview} disabled={importing}>
                   {importing ? '등록 중…' : '확정하고 가져오기'}
-                </Button>
+                </ActionButton>
               </>
             ) : (
               <>
-                <Button variant="outline" onClick={() => setImportOpen(false)}>
+                <ActionButton variant="neutralOutline" onClick={() => setImportOpen(false)}>
                   취소
-                </Button>
-                <Button onClick={runImport} disabled={importing}>
+                </ActionButton>
+                <ActionButton onClick={runImport} disabled={importing}>
                   {importing ? '업로드 중…' : '업로드'}
-                </Button>
+                </ActionButton>
               </>
             )}
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </DialogRoot>
 
-      <Dialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>월 전체 삭제</DialogTitle>
-            <DialogDescription>
-              <span className="font-medium text-foreground">{filters.month}</span> 거래{' '}
-              <span className="font-medium text-foreground">{items.length}건</span>을 삭제할게요.
-              되돌릴 수 없어요.
-            </DialogDescription>
-          </DialogHeader>
-          {/* 현재 화면 필터에 걸리는 것만 지우므로, 어떤 필터가 걸려 있는지 밝힌다 */}
-          {bulkDeleteScope.length > 0 && (
-            <p className="text-sm text-muted-foreground">
-              적용 중인 필터: {bulkDeleteScope.join(' · ')} — 이 조건에 맞는 거래만 삭제돼요.
-            </p>
-          )}
-          {bulkDeleteError && (
-            <p className="text-sm text-destructive">{bulkDeleteError}</p>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBulkDeleteOpen(false)}>
+      {/* 되돌릴 수 없는 일괄 삭제라 Dialog가 아니라 AlertDialog를 쓴다 */}
+      <AlertDialogRoot open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>월 전체 삭제</AlertDialogTitle>
+            <AlertDialogDescription>
+              {filters.month} 거래 {items.length}건을 삭제할게요. 되돌릴 수 없어요.
+              {/* 현재 화면 필터에 걸리는 것만 지우므로, 어떤 필터가 걸려 있는지 밝힌다 */}
+              {bulkDeleteScope.length > 0 &&
+                ` 적용 중인 필터: ${bulkDeleteScope.join(' · ')} — 이 조건에 맞는 거래만 삭제돼요.`}
+              {bulkDeleteError ? ` (${bulkDeleteError})` : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction variant="neutralWeak" onClick={() => setBulkDeleteOpen(false)}>
               취소
-            </Button>
-            <Button
-              variant="destructive"
+            </AlertDialogAction>
+            <ActionButton
+              variant="criticalSolid"
               onClick={confirmBulkDelete}
-              disabled={bulkDeleting}
+              loading={bulkDeleting}
             >
-              {bulkDeleting ? '삭제 중…' : `${items.length}건 삭제`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              {items.length}건 삭제
+            </ActionButton>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialogRoot>
 
       {/* 연결 대상 선택 — 수정 모달 "묶음" 버튼에서 진입. 현재 목록의 반대 구분 후보를 고른다.
           본문만 스크롤(후보가 많을 수 있음), 헤더/푸터 고정 */}
-      <Dialog open={linkPickerOpen} onOpenChange={setLinkPickerOpen}>
-        <DialogContent className="sm:max-w-md max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto]">
-          <DialogHeader>
-            <DialogTitle>연결할 거래 선택</DialogTitle>
-            <DialogDescription>
-              현재 목록에서 묶을 상대 거래를 골라 하나의 묶음으로 연결해요. 원본은 그대로 남고
-              통계에만 반영돼요.
-            </DialogDescription>
-          </DialogHeader>
-          <ScrollArea className="min-h-0 pr-3">
-            <div className="space-y-3 text-sm">
+      <DialogRoot open={linkPickerOpen} onOpenChange={setLinkPickerOpen}>
+        <DialogContent
+          title="연결할 거래 선택"
+          description="현재 목록에서 묶을 상대 거래를 골라 하나의 묶음으로 연결해요. 원본은 그대로 남고 통계에만 반영돼요."
+        >
+          <DialogBody>
+            <div className="space-y-(--dimension-x3) t4-regular">
               {linkSource && (
-                <div className="space-y-1 rounded-md border p-2 text-xs">
+                <div className="space-y-(--dimension-x1) rounded-r1_5 border p-x2 t2-regular">
                   <p className="font-medium">묶을 기준 거래</p>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="min-w-0 truncate text-muted-foreground">
+                  <div className="flex items-center justify-between gap-x2">
+                    <span className="min-w-0 truncate text-fg-neutral-muted">
                       {KIND_LABEL[linkSource.kind]} · {linkSource.category_name} ·{' '}
                       {linkSource.account_name}
                     </span>
@@ -2156,19 +2095,19 @@ export function TransactionsPage() {
                   </div>
                 </div>
               )}
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">
+              <div className="space-y-(--dimension-x1)">
+                <p className="t2-regular text-fg-neutral-muted">
                   현재 목록에서 연결할 {linkSource?.kind === 'expense' ? '수입' : '지출'} 거래를
                   고르세요.
                 </p>
                 {linkCandidates.length === 0 ? (
-                  <p className="rounded-md border py-6 text-center text-xs text-muted-foreground">
+                  <p className="rounded-r1_5 border py-x6 text-center t2-regular text-fg-neutral-muted">
                     현재 목록에 묶을 수 있는{' '}
                     {linkSource?.kind === 'expense' ? '수입' : '지출'} 거래가 없어요. 조회 월·필터를
                     옮겨 상대 거래가 보이게 한 뒤 다시 시도해주세요.
                   </p>
                 ) : (
-                  <div className="space-y-1">
+                  <div className="space-y-(--dimension-x1)">
                     {linkCandidates.map((c) => {
                       const active = linkTarget?.id === c.id
                       return (
@@ -2177,8 +2116,8 @@ export function TransactionsPage() {
                           type="button"
                           onClick={() => selectCandidate(c)}
                           className={cn(
-                            'flex w-full items-center justify-between gap-2 rounded-md border p-2 text-left text-xs transition-colors hover:bg-accent/50',
-                            active && 'border-primary bg-accent',
+                            'flex w-full items-center justify-between gap-x2 rounded-r1_5 border p-x2 text-left t2-regular transition-colors hover:bg-bg-neutral-weak',
+                            active && 'border-stroke-brand-solid bg-bg-neutral-weak',
                           )}
                         >
                           <span className="flex min-w-0 flex-col">
@@ -2186,7 +2125,7 @@ export function TransactionsPage() {
                               {c.date}
                               {c.time && ` ${formatTime(c.time)}`} · {c.category_name}
                             </span>
-                            <span className="truncate text-muted-foreground">
+                            <span className="truncate text-fg-neutral-muted">
                               {c.account_name}
                               {c.memo ? ` · ${c.memo}` : ''}
                             </span>
@@ -2203,37 +2142,38 @@ export function TransactionsPage() {
               </div>
               {linkExpense && linkIncome && (
                 <>
-                  <div className="space-y-1">
-                    <Label>묶음 유형</Label>
-                    <Select value={linkType} onValueChange={(v) => setLinkType(v as LinkType)}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="transfer">이체 (계좌 간 이동)</SelectItem>
-                        <SelectItem value="refund">환불 (결제 취소)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <SelectRoot
+                    label="묶음 유형"
+                    value={[linkType]}
+                    onValueChange={([v]) => setLinkType(v as LinkType)}
+                  >
+                    <SelectTrigger aria-label="묶음 유형" />
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="transfer" label="이체 (계좌 간 이동)" />
+                        <SelectItem value="refund" label="환불 (결제 취소)" />
+                      </SelectGroup>
+                    </SelectContent>
+                  </SelectRoot>
                   {linkType === 'transfer' ? (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="t2-regular text-fg-neutral-muted">
                       {linkExpense.account_name} → {linkIncome.account_name} 이체로 묶어요. 두 건
                       모두 수입/지출 통계에서 빠지고, 계정 잔액은 그대로 유지돼요.
                       {linkIncome.amount !== linkExpense.amount && (
-                        <span className="mt-1 block text-amber-400">
+                        <span className="mt-x1 block text-fg-warning">
                           ⚠️ 두 거래의 금액이 달라 이체로 묶을 수 없어요.
                         </span>
                       )}
                     </p>
                   ) : (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="t2-regular text-fg-neutral-muted">
                       지출에서 환불액을 뺀 순지출{' '}
-                      <span className="tabular-nums text-foreground">
+                      <span className="tabular-nums text-fg-neutral">
                         {formatKRW(Math.max(linkExpense.amount - linkIncome.amount, 0))}
                       </span>
                       만 통계에 반영되고, 환불 수입은 수입 합계에서 빠져요.
                       {linkIncome.amount > linkExpense.amount && (
-                        <span className="mt-1 block text-amber-400">
+                        <span className="mt-x1 block text-fg-warning">
                           ⚠️ 환불 금액이 지출 금액보다 커서 묶을 수 없어요.
                         </span>
                       )}
@@ -2241,105 +2181,104 @@ export function TransactionsPage() {
                   )}
                 </>
               )}
-              {linkError && <p className="text-sm text-destructive">{linkError}</p>}
+              {linkError && <p className="t4-regular text-fg-critical">{linkError}</p>}
             </div>
-          </ScrollArea>
+          </DialogBody>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setLinkPickerOpen(false)}>
+            <DialogAction variant="neutralWeak" onClick={() => setLinkPickerOpen(false)}>
               취소
-            </Button>
-            <Button onClick={confirmLink} disabled={linking || !linkTarget}>
-              {linking ? '묶는 중…' : '묶기'}
-            </Button>
+            </DialogAction>
+            <ActionButton onClick={confirmLink} loading={linking} disabled={!linkTarget}>
+              묶기
+            </ActionButton>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </DialogRoot>
 
       {/* 묶음 보기 — 병합 행에서 두 다리 상세 확인 + 해제 */}
-      <Dialog open={viewOpen} onOpenChange={setViewOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>묶음 보기</DialogTitle>
-            <DialogDescription>
-              {viewTx?.link_type ? LINK_LABEL[viewTx.link_type] : '묶음'}으로 연결된 두 거래예요.
-              해제하면 각각 개별 거래로 돌아가요.
-            </DialogDescription>
-          </DialogHeader>
+      <DialogRoot open={viewOpen} onOpenChange={setViewOpen}>
+        <DialogContent
+          title="묶음 보기"
+          description={`${viewTx?.link_type ? LINK_LABEL[viewTx.link_type] : '묶음'}으로 연결된 두 거래예요. 해제하면 각각 개별 거래로 돌아가요.`}
+        >
+          <DialogBody>
           {viewTx &&
             isBundle(viewTx) &&
             (() => {
               const { expense, income } = bundleLegs(viewTx)
               return (
-                <div className="min-w-0 space-y-3 text-sm">
+                <div className="min-w-0 space-y-(--dimension-x3) t4-regular">
                   {/* 지출 다리 */}
-                  <div className="space-y-1 rounded-md border p-2 text-xs">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="flex min-w-0 items-center gap-1">
-                        <Badge variant="outline" className={KIND_BADGE_CLASS.expense}>
+                  <div className="space-y-(--dimension-x1) rounded-r1_5 border p-x2 t2-regular">
+                    <div className="flex items-center justify-between gap-x2">
+                      <span className="flex min-w-0 items-center gap-x1">
+                        <Badge variant="weak" tone="critical">
                           {KIND_LABEL.expense}
                         </Badge>
                         <span className="truncate">{expense.category_name}</span>
                       </span>
-                      <span className="shrink-0 tabular-nums text-rose-400">
+                      <span className="shrink-0 tabular-nums text-fg-critical">
                         -{formatNumber(expense.amount)}
                       </span>
                     </div>
-                    <p className="truncate text-muted-foreground">
+                    <p className="truncate text-fg-neutral-muted">
                       {expense.date}
                       {expense.time && ` ${formatTime(expense.time)}`} · {legAccountText(expense)}
                       {expense.memo ? ` · ${expense.memo}` : ''}
                     </p>
                   </div>
                   {/* 수입 다리 */}
-                  <div className="space-y-1 rounded-md border p-2 text-xs">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="flex min-w-0 items-center gap-1">
-                        <Badge variant="outline" className={KIND_BADGE_CLASS.income}>
+                  <div className="space-y-(--dimension-x1) rounded-r1_5 border p-x2 t2-regular">
+                    <div className="flex items-center justify-between gap-x2">
+                      <span className="flex min-w-0 items-center gap-x1">
+                        <Badge variant="weak" tone="positive">
                           {KIND_LABEL.income}
                         </Badge>
                         <span className="truncate">{income.category_name}</span>
                       </span>
-                      <span className="shrink-0 tabular-nums text-emerald-400">
+                      <span className="shrink-0 tabular-nums text-fg-positive">
                         +{formatNumber(income.amount)}
                       </span>
                     </div>
-                    <p className="truncate text-muted-foreground">
+                    <p className="truncate text-fg-neutral-muted">
                       {income.date}
                       {income.time && ` ${formatTime(income.time)}`} · {legAccountText(income)}
                       {income.memo ? ` · ${income.memo}` : ''}
                     </p>
                   </div>
                   {/* 유형별 효과 요약 */}
-                  <p className="text-xs text-muted-foreground">
+                  <p className="t2-regular text-fg-neutral-muted">
                     {viewTx.link_type === 'transfer' ? (
                       '두 건 모두 수입/지출 통계에서 빠지고, 계정 잔액은 그대로예요.'
                     ) : (
                       <>
                         지출에서 환불액을 뺀 순지출{' '}
-                        <span className="tabular-nums text-foreground">
+                        <span className="tabular-nums text-fg-neutral">
                           {formatKRW(Math.max(expense.amount - income.amount, 0))}
                         </span>
                         만 통계에 반영돼요.
                       </>
                     )}
                   </p>
-                  {viewError && <p className="text-sm text-destructive">{viewError}</p>}
+                  {viewError && <p className="t4-regular text-fg-critical">{viewError}</p>}
                 </div>
               )
             })()}
-          <DialogFooter className="sm:justify-between">
-            <Button
-              variant="outline"
-              className="text-destructive"
+          </DialogBody>
+          <DialogFooter>
+            <ActionButton
+              variant="neutralOutline"
+              className="text-fg-critical"
               onClick={confirmUnlink}
-              disabled={unlinking}
+              loading={unlinking}
             >
-              <Unlink /> {unlinking ? '해제 중…' : '묶음 해제'}
-            </Button>
-            <Button onClick={() => setViewOpen(false)}>닫기</Button>
+              <PrefixIcon svg={<IconScissorsLine />} />
+              묶음 해제
+            </ActionButton>
+            <DialogAction>닫기</DialogAction>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </DialogRoot>
     </div>
   )
 }
