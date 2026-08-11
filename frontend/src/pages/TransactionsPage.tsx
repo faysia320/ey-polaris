@@ -1010,13 +1010,15 @@ export function TransactionsPage() {
           둘 다 필드 높이(52/40)라 한 줄에서 높이가 맞는다 */}
       <div className="flex flex-col gap-x3 lg:flex-row lg:items-center lg:justify-between">
         <h1 className="screen-title shrink-0 whitespace-nowrap">지출/수입 내역</h1>
-        <div className="flex items-center gap-x2">
+        <div className="flex flex-wrap items-center gap-x2">
           <MemberFilterSelect />
           {/* 표/캘린더 전환 — 상호배타 뷰 전환은 SEED에서 SegmentedControl의 역할이다.
-              모바일에서는 남는 폭을 채워 두 탭이 균등하게 나뉜다 */}
+              SEED는 이 컴포넌트에 크기 변형을 주지 않아 42px 고정이라, 필드(52/40) 옆에 세우면
+              높이가 맞지 않는다. 모바일에서는 전체 폭 단독 줄로 내리고(모바일 관용구이기도 하다),
+              데스크톱에서만 나란히 둔다 — 그때는 40 vs 42로 차이가 눈에 띄지 않는다 */}
           <SegmentedControl
             aria-label="보기 전환"
-            className="min-w-0 flex-1 lg:flex-none"
+            className="w-full lg:w-auto"
             value={view}
             onValueChange={(v) => switchView(v as 'table' | 'calendar')}
           >
