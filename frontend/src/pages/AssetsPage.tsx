@@ -1,27 +1,31 @@
 import { useEffect, useMemo, useState } from "react";
 import type { EChartsOption } from "echarts";
-import { Pencil, Plus, Target, Trash2 } from "lucide-react";
+import {
+  IconCompassFill,
+  IconPencilLine,
+  IconPlusLine,
+  IconTrashcanLine,
+} from "@karrotmarket/react-monochrome-icon";
+import { Badge, Icon, PrefixIcon } from "@seed-design/react";
+import { ActionButton } from "seed-design/ui/action-button";
+import {
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogRoot,
+  AlertDialogTitle,
+} from "seed-design/ui/alert-dialog";
+import { DialogAction, DialogBody, DialogContent, DialogFooter, DialogRoot } from "seed-design/ui/dialog";
+import { TextField, TextFieldInput } from "seed-design/ui/text-field";
 
 import { EChart } from "@/components/charts/EChart";
 import { MemberFilterSelect } from "@/components/members/MemberFilterSelect";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { DatePicker } from "@/components/ui/date-picker";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { DateField } from "@/components/ui/DateField";
+import { Surface } from "@/components/ui/Surface";
 import { api } from "@/lib/api";
 import { formatKRW, todayISO } from "@/lib/format";
-import { touchTarget } from "@/lib/utils";
 import { useAnalyticsStore } from "@/stores/analytics";
 import { useGoalStore } from "@/stores/goals";
 import { useMasterDataStore } from "@/stores/masterData";
@@ -186,52 +190,45 @@ export function AssetsPage() {
 
   // 유형별 그리드와 구성원별 분할 양쪽에서 같은 계정 카드를 쓴다
   const renderAccountCard = (a: AccountBalance) => (
-    <Card key={a.id} className={a.is_active ? "" : "opacity-50"}>
-      <CardHeader>
-        {/* CardHeader가 grid라 CardTitle(그리드 아이템)의 min-width:auto가 트랙을
-            max-content로 밀어올린다 — min-w-0을 여기에도 줘야 안쪽 truncate가 작동한다 */}
-        <CardTitle className="flex min-w-0 items-center justify-between gap-2 text-base">
-          <span className="min-w-0 truncate">{a.name}</span>
-          <span className="flex shrink-0 items-center gap-1">
-            {!a.is_active && <Badge variant="secondary">비활성</Badge>}
-            {/* 시각적 크기는 앱 전역 icon-sm(28px) 관례를 따르되, 터치 히트 영역만
-                의사요소로 44px까지 넓힌다 (touchTarget = 28 + inset 8*2) */}
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className={touchTarget}
-              title={`${a.name} 삭제`}
-              aria-label={`${a.name} 삭제`}
-              onClick={() => openAccountDelete(a)}
-            >
-              <Trash2 className="text-destructive" />
-            </Button>
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p
-          className={`text-xl font-semibold ${a.balance < 0 ? "text-rose-400" : ""}`}
-        >
-          {formatKRW(a.balance)}
-        </p>
-        {a.valued_at && (
-          <p className="mt-1 text-xs text-muted-foreground">
-            평가 기준일 {a.valued_at}
-          </p>
-        )}
-        {VALUATION_TYPES.includes(a.type) && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-3"
+    <Surface
+      key={a.id}
+      className={`flex flex-col gap-x2 ${a.is_active ? "" : "opacity-50"}`}
+    >
+      <div className="flex min-w-0 items-center justify-between gap-x2">
+        <span className="t5-bold min-w-0 truncate">{a.name}</span>
+        <span className="flex shrink-0 items-center gap-x1">
+          {!a.is_active && <Badge variant="weak">비활성</Badge>}
+          <ActionButton
+            variant="ghost"
+            size="small"
+            color="fg.critical"
+            layout="iconOnly"
+            title={`${a.name} 삭제`}
+            aria-label={`${a.name} 삭제`}
+            onClick={() => openAccountDelete(a)}
+          >
+            <Icon svg={<IconTrashcanLine />} />
+          </ActionButton>
+        </span>
+      </div>
+      <p className={`t7-bold ${a.balance < 0 ? "text-fg-critical" : ""}`}>
+        {formatKRW(a.balance)}
+      </p>
+      {a.valued_at && (
+        <p className="t2-regular text-fg-neutral-muted">평가 기준일 {a.valued_at}</p>
+      )}
+      {VALUATION_TYPES.includes(a.type) && (
+        <div className="flex">
+          <ActionButton
+            variant="neutralOutline"
+            size="small"
             onClick={() => openValuation(a)}
           >
             {isStock(a.type) ? "총합 입력" : "평가액 갱신"}
-          </Button>
-        )}
-      </CardContent>
-    </Card>
+          </ActionButton>
+        </div>
+      )}
+    </Surface>
   );
 
   const openAccountDelete = (account: AccountBalance) => {
@@ -356,7 +353,7 @@ export function AssetsPage() {
 
   if (error) {
     return (
-      <p className="text-destructive">
+      <p className="t4-regular text-fg-critical">
         자산 상태를 불러오지 못했습니다: {error}
       </p>
     );
@@ -367,110 +364,101 @@ export function AssetsPage() {
   const grandTotal = assets?.grand_total ?? 0;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">자산 상태</h1>
+    <div className="flex flex-col gap-x6">
+      <div className="flex items-center justify-between gap-x2">
+        <h1 className="screen-title">자산 상태</h1>
         <MemberFilterSelect />
       </div>
 
       {refreshNotice && (
-        <p className="text-sm text-destructive">{refreshNotice}</p>
+        <p className="t4-regular text-fg-critical">{refreshNotice}</p>
       )}
 
-      <Card className="border-yellow-300/30">
-        <CardHeader>
-          <CardTitle className="text-sm text-muted-foreground">
-            총자산
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-3xl font-semibold">{formatKRW(total)}</p>
-        </CardContent>
-      </Card>
+      <Surface className="flex flex-col gap-x2 border-stroke-brand-weak">
+        <p className="t4-medium text-fg-neutral-muted">총자산</p>
+        <p className="t11-bold">{formatKRW(total)}</p>
+      </Surface>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex flex-wrap items-center justify-between gap-2">
-            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              <span className="flex items-center gap-2">
-                <Target className="size-4 text-yellow-300" /> 목표 달성 현황
-              </span>
-              <span className="text-xs font-normal text-muted-foreground">
-                부부 공동 목표 — 전체 자산 기준
-              </span>
+      <Surface className="flex flex-col gap-x4">
+        <div className="flex flex-wrap items-center justify-between gap-x2">
+          <span className="flex flex-wrap items-center gap-x-x2">
+            <span className="t5-bold flex items-center gap-x2">
+              <Icon svg={<IconCompassFill />} size="x5" color="fg.brand" /> 목표 달성 현황
             </span>
-            <Button size="sm" className="shrink-0" onClick={openGoalCreate}>
-              <Plus /> 목표 추가
-            </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {goalListError && (
-            <p className="text-sm text-destructive">
-              목표를 처리하지 못했습니다: {goalListError}
-            </p>
-          )}
-          {goalItems.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              아직 목표가 없어요. 목표금액을 정하면 총자산 대비 달성률을
-              보여드려요 🌟
-            </p>
-          )}
-          {goalItems.map((g) => {
-            const rate = grandTotal / g.target_amount;
-            return (
-              <div key={g.id}>
-                <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-sm">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="truncate">{g.name}</span>
-                    {g.target_date && (
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        ~{g.target_date}
-                      </span>
-                    )}
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    <span className="text-muted-foreground">
-                      {formatKRW(grandTotal)} / {formatKRW(g.target_amount)} (
-                      {Math.round(rate * 100)}%)
+            <span className="t2-regular text-fg-neutral-muted">
+              부부 공동 목표 — 전체 자산 기준
+            </span>
+          </span>
+          <ActionButton size="small" className="shrink-0" onClick={openGoalCreate}>
+            <PrefixIcon svg={<IconPlusLine />} />
+            목표 추가
+          </ActionButton>
+        </div>
+        {goalListError && (
+          <p className="t4-regular text-fg-critical">
+            목표를 처리하지 못했습니다: {goalListError}
+          </p>
+        )}
+        {goalItems.length === 0 && (
+          <p className="t4-regular text-fg-neutral-muted">
+            아직 목표가 없어요. 목표금액을 정하면 총자산 대비 달성률을 보여드려요 🌟
+          </p>
+        )}
+        {goalItems.map((g) => {
+          const rate = grandTotal / g.target_amount;
+          return (
+            <div key={g.id} className="flex flex-col gap-x1">
+              <div className="t4-regular flex flex-wrap items-center justify-between gap-x-x2 gap-y-x1">
+                <span className="flex min-w-0 items-center gap-x2">
+                  <span className="truncate">{g.name}</span>
+                  {g.target_date && (
+                    <span className="t2-regular shrink-0 text-fg-neutral-muted">
+                      ~{g.target_date}
                     </span>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className={touchTarget}
-                      aria-label="목표 수정"
-                      onClick={() => openGoalEdit(g)}
-                    >
-                      <Pencil />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className={touchTarget}
-                      aria-label="목표 삭제"
-                      onClick={() =>
-                        removeGoal(g.id)
-                          .then(() => setGoalListError(null))
-                          .catch((e: Error) => setGoalListError(e.message))
-                      }
-                    >
-                      <Trash2 className="text-destructive" />
-                    </Button>
+                  )}
+                </span>
+                <span className="flex shrink-0 items-center gap-x2">
+                  <span className="text-fg-neutral-muted">
+                    {formatKRW(grandTotal)} / {formatKRW(g.target_amount)} (
+                    {Math.round(rate * 100)}%)
                   </span>
-                </div>
-                <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className={`h-full rounded-full transition-all ${
-                      rate >= 1 ? "bg-emerald-400" : "bg-yellow-300"
-                    }`}
-                    style={{ width: `${Math.min(rate, 1) * 100}%` }}
-                  />
-                </div>
+                  <ActionButton
+                    variant="ghost"
+                    size="small"
+                    layout="iconOnly"
+                    aria-label="목표 수정"
+                    onClick={() => openGoalEdit(g)}
+                  >
+                    <Icon svg={<IconPencilLine />} />
+                  </ActionButton>
+                  <ActionButton
+                    variant="ghost"
+                    size="small"
+                    color="fg.critical"
+                    layout="iconOnly"
+                    aria-label="목표 삭제"
+                    onClick={() =>
+                      removeGoal(g.id)
+                        .then(() => setGoalListError(null))
+                        .catch((e: Error) => setGoalListError(e.message))
+                    }
+                  >
+                    <Icon svg={<IconTrashcanLine />} />
+                  </ActionButton>
+                </span>
               </div>
-            );
-          })}
-        </CardContent>
-      </Card>
+              <div className="h-x2 overflow-hidden rounded-full bg-bg-neutral-weak">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    rate >= 1 ? "bg-bg-positive-solid" : "bg-bg-brand-solid"
+                  }`}
+                  style={{ width: `${Math.min(rate, 1) * 100}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </Surface>
 
       {/* 계정 카드 — 유형(카테고리)별 그룹 카드 안에 중첩. 계정이 없는 유형은 표시하지 않는다.
           간편결제는 연결 계정으로 귀속되므로 잔액이 모두 0이면 그룹으로 표시하지 않는다.
@@ -483,287 +471,245 @@ export function AssetsPage() {
           return null;
         const subtotal = group.reduce((sum, a) => sum + a.balance, 0);
         return (
-          <Card key={type}>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>{ACCOUNT_TYPE_LABEL[type]}</span>
-                <span className="text-sm font-normal text-muted-foreground">
-                  {formatKRW(subtotal)}
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {splitMembers.length > 1 ? (
-                // 모바일은 세로 적층, sm 이상에서 구성원별 좌/우 분할
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {splitMembers.map((m) => {
-                    const owned = group.filter((a) => a.member_id === m.id);
-                    const ownedTotal = owned.reduce(
-                      (sum, a) => sum + a.balance,
-                      0,
-                    );
-                    return (
-                      <div key={m.id} className="space-y-2">
-                        <div className="flex items-baseline justify-between border-b pb-1">
-                          <span className="text-sm font-medium">{m.name}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {formatKRW(ownedTotal)}
-                          </span>
-                        </div>
-                        {owned.length === 0 ? (
-                          <p className="text-xs text-muted-foreground">
-                            계정 없음
-                          </p>
-                        ) : (
-                          // 분할로 폭이 절반이라 xl 이상에서만 2열로 늘린다
-                          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                            {owned.map(renderAccountCard)}
-                          </div>
-                        )}
+          <Surface key={type} className="flex flex-col gap-x4">
+            <div className="flex items-center justify-between gap-x2">
+              <span className="t5-bold">{ACCOUNT_TYPE_LABEL[type]}</span>
+              <span className="t4-regular text-fg-neutral-muted">
+                {formatKRW(subtotal)}
+              </span>
+            </div>
+            {splitMembers.length > 1 ? (
+              // 모바일은 세로 적층, sm 이상에서 구성원별 좌/우 분할
+              <div className="grid grid-cols-1 gap-x4 sm:grid-cols-2">
+                {splitMembers.map((m) => {
+                  const owned = group.filter((a) => a.member_id === m.id);
+                  const ownedTotal = owned.reduce((sum, a) => sum + a.balance, 0);
+                  return (
+                    <div key={m.id} className="flex flex-col gap-x2">
+                      <div className="flex items-baseline justify-between border-b border-stroke-neutral-weak pb-x1">
+                        <span className="t4-medium">{m.name}</span>
+                        <span className="t2-regular text-fg-neutral-muted">
+                          {formatKRW(ownedTotal)}
+                        </span>
                       </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {group.map(renderAccountCard)}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                      {owned.length === 0 ? (
+                        <p className="t2-regular text-fg-neutral-muted">계정 없음</p>
+                      ) : (
+                        // 분할로 폭이 절반이라 xl 이상에서만 2열로 늘린다
+                        <div className="grid grid-cols-1 gap-x4 xl:grid-cols-2">
+                          {owned.map(renderAccountCard)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-x4 md:grid-cols-2 xl:grid-cols-3">
+                {group.map(renderAccountCard)}
+              </div>
+            )}
+          </Surface>
         );
       })}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>월별 자산 추이 (최근 12개월)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <EChart option={trendOption} height={320} />
-        </CardContent>
-      </Card>
+      <Surface className="flex flex-col gap-x4">
+        <h2 className="t5-bold">월별 자산 추이 (최근 12개월)</h2>
+        <EChart option={trendOption} height={320} />
+      </Surface>
 
-      <Dialog
+      <DialogRoot
         open={valuationTarget !== null}
         onOpenChange={(open) => !open && setValuationTarget(null)}
       >
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>
-              {valuationTarget && isStock(valuationTarget.type)
-                ? "보유 주식 총합 입력"
-                : "평가액 갱신"}{" "}
-              — {valuationTarget?.name}
-            </DialogTitle>
-            <DialogDescription>
-              {valuationTarget && isStock(valuationTarget.type)
-                ? "기준일의 보유 주식 평가 총합을 직접 입력해요. 주식은 엑셀 업로드로 갱신되지 않아요."
-                : "기준일의 평가액을 기록해요. 같은 날짜에 다시 기록하면 값이 갱신돼요."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label htmlFor="val-date">기준일</Label>
-              <DatePicker
-                id="val-date"
+        <DialogContent
+          title={`${
+            valuationTarget && isStock(valuationTarget.type)
+              ? "보유 주식 총합 입력"
+              : "평가액 갱신"
+          } — ${valuationTarget?.name ?? ""}`}
+          description={
+            valuationTarget && isStock(valuationTarget.type)
+              ? "기준일의 보유 주식 평가 총합을 직접 입력해요. 주식은 엑셀 업로드로 갱신되지 않아요."
+              : "기준일의 평가액을 기록해요. 같은 날짜에 다시 기록하면 값이 갱신돼요."
+          }
+        >
+          <DialogBody>
+            <div className="flex flex-col gap-x4">
+              <DateField
+                label="기준일"
                 disableFuture
                 value={valuationDate}
                 onChange={setValuationDate}
               />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="val-value">
-                {valuationTarget && isStock(valuationTarget.type)
-                  ? "보유 주식 총합 (원)"
-                  : "평가액 (원)"}
-              </Label>
-              <Input
-                id="val-value"
-                type="number"
-                min={0}
-                placeholder="예: 50000000"
+              <TextField
+                label={
+                  valuationTarget && isStock(valuationTarget.type)
+                    ? "보유 주식 총합 (원)"
+                    : "평가액 (원)"
+                }
                 value={valuationValue}
-                onChange={(e) => setValuationValue(e.target.value)}
-              />
-            </div>
-            {valuationTarget && valuationHistory.length > 0 && (
-              <div className="space-y-1">
-                <Label>평가 이력</Label>
-                <ScrollArea className="max-h-40 rounded-md border">
-                  <div className="space-y-1.5 p-2">
+                onValueChange={({ value }) => setValuationValue(value)}
+              >
+                <TextFieldInput type="number" min={0} placeholder="예: 50000000" />
+              </TextField>
+              {valuationTarget && valuationHistory.length > 0 && (
+                <div className="flex flex-col gap-x1">
+                  <p className="t4-medium">평가 이력</p>
+                  <div className="max-h-40 overflow-y-auto rounded-r2 border border-stroke-neutral-weak p-x2">
                     {valuationHistory.map((v) => (
                       <div
                         key={v.id}
-                        className="flex items-center justify-between gap-2 text-sm"
+                        className="t4-regular flex items-center justify-between gap-x2 py-x0_5"
                       >
-                        <span className="text-muted-foreground">{v.date}</span>
-                        <span className="flex items-center gap-2">
+                        <span className="text-fg-neutral-muted">{v.date}</span>
+                        <span className="flex items-center gap-x2">
                           {formatKRW(v.value)}
-                          <Button
+                          <ActionButton
                             variant="ghost"
-                            size="icon-sm"
-                            className={touchTarget}
+                            size="small"
+                            color="fg.critical"
+                            layout="iconOnly"
                             title={`${v.date} 평가액 삭제`}
                             aria-label={`${v.date} 평가액 삭제`}
-                            onClick={() =>
-                              openValuationDelete(valuationTarget.id, v)
-                            }
+                            onClick={() => openValuationDelete(valuationTarget.id, v)}
                           >
-                            <Trash2 className="text-destructive" />
-                          </Button>
+                            <Icon svg={<IconTrashcanLine />} />
+                          </ActionButton>
                         </span>
                       </div>
                     ))}
                   </div>
-                </ScrollArea>
-                <p className="text-xs text-muted-foreground">
-                  이력을 모두 삭제하면 잔액이 거래 기반 계산으로 돌아가요.
-                </p>
-              </div>
-            )}
-            {valuationError && (
-              <p className="text-sm text-destructive">{valuationError}</p>
-            )}
-          </div>
+                  <p className="t2-regular text-fg-neutral-muted">
+                    이력을 모두 삭제하면 잔액이 거래 기반 계산으로 돌아가요.
+                  </p>
+                </div>
+              )}
+              {valuationError && (
+                <p className="t4-regular text-fg-critical">{valuationError}</p>
+              )}
+            </div>
+          </DialogBody>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setValuationTarget(null)}>
+            <DialogAction variant="neutralWeak" onClick={() => setValuationTarget(null)}>
               취소
-            </Button>
-            <Button onClick={submitValuation}>기록</Button>
+            </DialogAction>
+            {/* DialogAction은 누르면 다이얼로그를 닫는다 — 검증 실패 시 열어둬야 하므로
+                기록 버튼만 ActionButton을 직접 쓴다 */}
+            <ActionButton onClick={submitValuation}>기록</ActionButton>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </DialogRoot>
 
       {/* 평가액 삭제 확인 — 평가액 갱신 다이얼로그 위에 겹쳐 뜬다 */}
-      <Dialog
+      <AlertDialogRoot
         open={valuationToDelete !== null}
         onOpenChange={(open) => !open && setValuationToDelete(null)}
       >
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>평가액 삭제</DialogTitle>
-            <DialogDescription>
+        <AlertDialogContent layerIndex={1}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>평가액 삭제</AlertDialogTitle>
+            <AlertDialogDescription>
               {valuationToDelete?.valuation.date} 기준{" "}
-              {valuationToDelete && formatKRW(valuationToDelete.valuation.value)}{" "}
-              기록을 삭제할게요. 되돌릴 수 없어요.
-            </DialogDescription>
-          </DialogHeader>
-          {valuationDeleteError && (
-            <p className="text-sm text-destructive">{valuationDeleteError}</p>
-          )}
-          <DialogFooter>
-            <Button
-              variant="outline"
+              {valuationToDelete && formatKRW(valuationToDelete.valuation.value)} 기록을
+              삭제할게요. 되돌릴 수 없어요.
+              {valuationDeleteError ? ` (${valuationDeleteError})` : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              variant="neutralWeak"
               onClick={() => setValuationToDelete(null)}
               disabled={valuationDeleting}
             >
               취소
-            </Button>
-            <Button
-              variant="destructive"
+            </AlertDialogAction>
+            <ActionButton
+              variant="criticalSolid"
               onClick={confirmValuationDelete}
-              disabled={valuationDeleting}
+              loading={valuationDeleting}
             >
-              {valuationDeleting ? "삭제 중…" : "삭제"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              삭제
+            </ActionButton>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialogRoot>
 
       {/* 자산 계정 삭제 확인 — 평가 이력이 함께 사라지고, 거래가 있으면 백엔드가 409로 막는다 */}
-      <Dialog
+      <AlertDialogRoot
         open={accountToDelete !== null}
         onOpenChange={(open) => !open && setAccountToDelete(null)}
       >
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>자산 계정 삭제</DialogTitle>
-            <DialogDescription>
-              {accountToDelete?.name} 계정을 삭제할게요. 이 계정의 평가 이력도
-              함께 삭제되며 되돌릴 수 없어요.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 text-sm">
-            <p className="text-muted-foreground">
-              현재 잔액 {accountToDelete && formatKRW(accountToDelete.balance)} —
-              삭제하면 총자산에서 빠져요.
-            </p>
-            {accountDeleteError && (
-              <p className="text-destructive">{accountDeleteError}</p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>자산 계정 삭제</AlertDialogTitle>
+            <AlertDialogDescription>
+              {accountToDelete?.name} 계정을 삭제할게요. 이 계정의 평가 이력도 함께
+              삭제되며 되돌릴 수 없어요. 현재 잔액{" "}
+              {accountToDelete && formatKRW(accountToDelete.balance)} — 삭제하면 총자산에서
+              빠져요.
+              {accountDeleteError ? ` (${accountDeleteError})` : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              variant="neutralWeak"
               onClick={() => setAccountToDelete(null)}
               disabled={accountDeleting}
             >
               취소
-            </Button>
-            <Button
-              variant="destructive"
+            </AlertDialogAction>
+            <ActionButton
+              variant="criticalSolid"
               onClick={confirmAccountDelete}
-              disabled={accountDeleting}
+              loading={accountDeleting}
             >
-              {accountDeleting ? "삭제 중…" : "삭제"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              삭제
+            </ActionButton>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialogRoot>
 
-      <Dialog open={goalDialogOpen} onOpenChange={setGoalDialogOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{editingGoal ? "목표 수정" : "목표 추가"}</DialogTitle>
-            <DialogDescription>
-              달성률은 가구 전체 총자산(부부 공동) 기준으로 계산돼요.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label htmlFor="goal-name">목표 이름</Label>
-              <Input
-                id="goal-name"
-                placeholder="예: 내집마련 1억"
+      <DialogRoot open={goalDialogOpen} onOpenChange={setGoalDialogOpen}>
+        <DialogContent
+          title={editingGoal ? "목표 수정" : "목표 추가"}
+          description="달성률은 가구 전체 총자산(부부 공동) 기준으로 계산돼요."
+        >
+          <DialogBody>
+            <div className="flex flex-col gap-x4">
+              <TextField
+                label="목표 이름"
                 value={goalName}
-                onChange={(e) => setGoalName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="goal-amount">목표금액 (원)</Label>
-              <Input
-                id="goal-amount"
-                type="number"
-                min={1}
-                placeholder="예: 100000000"
+                onValueChange={({ value }) => setGoalName(value)}
+              >
+                <TextFieldInput placeholder="예: 내집마련 1억" />
+              </TextField>
+              <TextField
+                label="목표금액 (원)"
                 value={goalAmount}
-                onChange={(e) => setGoalAmount(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="goal-date">목표일 (선택)</Label>
-              <DatePicker
-                id="goal-date"
+                onValueChange={({ value }) => setGoalAmount(value)}
+              >
+                <TextFieldInput type="number" min={1} placeholder="예: 100000000" />
+              </TextField>
+              <DateField
+                label="목표일 (선택)"
                 placeholder="목표일 없음"
                 clearable
                 value={goalDate}
                 onChange={setGoalDate}
               />
+              {goalError && <p className="t4-regular text-fg-critical">{goalError}</p>}
             </div>
-            {goalError && (
-              <p className="text-sm text-destructive">{goalError}</p>
-            )}
-          </div>
+          </DialogBody>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setGoalDialogOpen(false)}>
+            <DialogAction variant="neutralWeak" onClick={() => setGoalDialogOpen(false)}>
               취소
-            </Button>
-            <Button onClick={submitGoal}>
-              {editingGoal ? "수정" : "추가"}
-            </Button>
+            </DialogAction>
+            {/* 검증 실패 시 다이얼로그를 열어둬야 하므로 DialogAction이 아니라 ActionButton */}
+            <ActionButton onClick={submitGoal}>{editingGoal ? "수정" : "추가"}</ActionButton>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </DialogRoot>
     </div>
   );
 }

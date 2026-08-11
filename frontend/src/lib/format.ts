@@ -51,6 +51,36 @@ export function currentMonth(): string {
   return todayISO().slice(0, 7)
 }
 
+/**
+ * SEED DatePicker는 시간대 해석이 없는 달력 날짜 `{ year, month, day }`를 쓴다.
+ * 앱과 백엔드는 'YYYY-MM-DD' 문자열을 쓰므로 경계에서 변환한다.
+ * (Date를 거치지 않는다 — toISOString()의 UTC 변환으로 날짜가 하루 밀리는 사고를 원천 차단)
+ */
+export interface CalendarDate {
+  year: number
+  month: number
+  day: number
+}
+
+/** 'YYYY-MM-DD' → CalendarDate. 빈 문자열이면 undefined. */
+export function toCalendarDate(iso: string): CalendarDate | undefined {
+  if (!iso) return undefined
+  const [year, month, day] = iso.split('-').map(Number)
+  if (!year || !month || !day) return undefined
+  return { year, month, day }
+}
+
+/** CalendarDate → 'YYYY-MM-DD' */
+export function fromCalendarDate(d: CalendarDate): string {
+  return `${String(d.year).padStart(4, '0')}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`
+}
+
+/** 'YYYY-MM-DD' → '2026년 8월 11일'. 날짜 필드의 표시용 라벨. */
+export function formatDateLabel(iso: string): string {
+  const d = toCalendarDate(iso)
+  return d ? `${d.year}년 ${d.month}월 ${d.day}일` : ''
+}
+
 /** 오늘 기준 직전 월(YYYY-MM). 조회 화면들의 기본 선택 월로 사용한다. */
 export function previousMonth(): string {
   return addMonths(currentMonth(), -1)

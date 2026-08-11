@@ -22,25 +22,25 @@ export function MemberFilterSelect() {
   }, [loaded, fetchAll])
 
   return (
-    // SEED Select는 값을 배열로 다룬다 (다중 선택과 API를 공유) — 단일 선택은 항목 하나짜리 배열
-    <SelectRoot
-      size="responsive"
-      value={[memberId === null ? 'all' : String(memberId)]}
-      onValueChange={([v]) => setMemberId(v === 'all' ? null : Number(v))}
-    >
-      <SelectTrigger
-        aria-label="구성원 필터"
-        prefixIcon={<IconPerson2Fill />}
-        className="w-x16 md:w-auto md:min-w-x16"
-      />
-      <SelectContent>
-        <SelectGroup>
-          <SelectItem value="all" label="전체" />
-          {members.map((m) => (
-            <SelectItem key={m.id} value={String(m.id)} label={m.name} />
-          ))}
-        </SelectGroup>
-      </SelectContent>
-    </SelectRoot>
+    // SEED Select는 Field 계열이라 부모 폭을 100% 채운다 — 페이지 헤더에서 제목을 밀어내지
+    // 않도록 폭을 여기서 고정한다
+    <div className="w-32 shrink-0 sm:w-40">
+      {/* SEED Select는 값을 배열로 다룬다 (다중 선택과 API를 공유) — 단일 선택은 항목 하나짜리 배열 */}
+      <SelectRoot
+        size="responsive"
+        value={[memberId === null ? 'all' : String(memberId)]}
+        onValueChange={([v]) => setMemberId(v === 'all' ? null : Number(v))}
+      >
+        <SelectTrigger aria-label="구성원 필터" prefixIcon={<IconPerson2Fill />} />
+        <SelectContent>
+          <SelectGroup>
+            <SelectItem value="all" label="전체" />
+            {members.map((m) => (
+              <SelectItem key={m.id} value={String(m.id)} label={m.name} />
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </SelectRoot>
+    </div>
   )
 }
