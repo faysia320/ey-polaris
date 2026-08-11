@@ -12,13 +12,15 @@ export function cn(...inputs: ClassValue[]) {
  * 시트가 그만큼 자라 화면을 덮고 위쪽이 잘린 채 스크롤도 안 된다.
  * (SEED 문서도 긴 콘텐츠는 본문 안에서 maxHeight + overflow로 묶으라고 안내한다)
  *
- * 반대로 md 이상에서 쓰이는 SidePanelBody는 이미 스크롤 컨테이너이므로 제한을 풀어야 한다.
- * 안 풀면 패널 높이가 남는데도 짧은 스크롤 영역이 하나 더 생긴다.
+ * 반대로 md 이상에서 쓰이는 SidePanelBody는 이미 스크롤 컨테이너(overflow-y: auto)이므로
+ * 높이 제한만 풀어준다. 안 풀면 패널 높이가 남는데도 짧은 스크롤 영역이 하나 더 생긴다.
+ *
+ * overflow는 md 위아래 모두 auto로 둔다 — SidePanelBody의 기본값과 같은 값이라 덮어써도
+ * 무해하다. 여기서 overflow-visible로 되돌리면 본문이 패널 밖으로 흘러 헤더와 겹친다.
  *
  * md(768px)는 Tailwind와 SEED가 같은 값이라 ResponsiveSidePanel의 전환 지점과 정확히 맞는다.
  */
-export const panelBodyScroll =
-  'max-h-[60dvh] overflow-y-auto md:max-h-none md:overflow-visible'
+export const panelBodyScroll = 'max-h-[60dvh] overflow-y-auto md:max-h-none'
 
 // 작은 버튼의 터치 히트 영역을 넓히는 유틸 클래스.
 // SEED ActionButton은 size=small이 36px, size=medium+iconOnly가 40px로 44px 권장치에 못 미친다.
