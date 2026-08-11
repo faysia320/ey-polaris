@@ -3,7 +3,11 @@ import type { ECElementEvent, EChartsOption } from 'echarts'
 import { IconChevronLeftLine, IconChevronRightLine } from '@karrotmarket/react-monochrome-icon'
 import { Icon } from '@seed-design/react'
 import { ActionButton } from 'seed-design/ui/action-button'
-import { DialogBody, DialogContent, DialogRoot } from 'seed-design/ui/dialog'
+import {
+  ResponsiveSidePanelBody,
+  ResponsiveSidePanelContent,
+  ResponsiveSidePanelRoot,
+} from 'seed-design/ui/responsive-side-panel'
 
 import { EChart } from '@/components/charts/EChart'
 import { MarkdownView } from '@/components/MarkdownView'
@@ -273,12 +277,12 @@ export function DashboardPage() {
         )}
       </Surface>
 
-      <DialogRoot open={detail !== null} onOpenChange={(open) => !open && closeDetail()}>
-        <DialogContent
+      <ResponsiveSidePanelRoot open={detail !== null} onOpenChange={(open) => !open && closeDetail()}>
+        <ResponsiveSidePanelContent
           title={`${detail?.major ?? ''} 지출 내역`}
           description={`${month} · ${detail?.items.length ?? 0}건 · 합계 ${formatKRW(detailTotal)}`}
         >
-          <DialogBody>
+          <ResponsiveSidePanelBody>
             {detail?.loading && (
               <p className="t4-regular py-x8 text-center text-fg-neutral-muted">불러오는 중...</p>
             )}
@@ -315,9 +319,9 @@ export function DashboardPage() {
                 ))}
               </div>
             )}
-          </DialogBody>
-        </DialogContent>
-      </DialogRoot>
+          </ResponsiveSidePanelBody>
+        </ResponsiveSidePanelContent>
+      </ResponsiveSidePanelRoot>
     </div>
   )
 }

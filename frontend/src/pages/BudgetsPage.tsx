@@ -169,8 +169,7 @@ export function BudgetsPage() {
             <TableRow>
               <TableHead>지출 대분류</TableHead>
               <TableHead className="hidden sm:table-cell">현재 예산</TableHead>
-              {/* SEED TextField는 단일(터치) 사이즈라 행이 두툼해진다 —
-                  빠른 입력 버튼이 두 줄로 접히지 않도록 컬럼을 넉넉히 잡는다 */}
+              {/* 빠른 입력 버튼이 두 줄로 접히지 않도록 컬럼을 넉넉히 잡는다 */}
               <TableHead className="w-40 sm:w-72">변경 금액 (원)</TableHead>
               <TableHead></TableHead>
             </TableRow>
@@ -199,7 +198,7 @@ export function BudgetsPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col gap-x1">
-                      <TextField
+                      <TextField size="responsive"
                         aria-label={`${major} 예산 입력`}
                         // 내부 draft는 순수 숫자 문자열로 유지하고 표시값에만 콤마를 적용
                         value={drafts[major] ? formatNumber(Number(drafts[major])) : ''}

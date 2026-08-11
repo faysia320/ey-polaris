@@ -69,10 +69,13 @@ export function DateField({
         )}
       </FieldButton>
 
+      {/* 피커는 폼(사이드 패널) 위에 겹쳐 뜬다 — 여기까지 패널로 바꾸면 패널 안의 패널이 된다.
+          maxWidth를 달력 폭에 맞춰 못박지 않으면 다이얼로그 기본 폭(480px)이 남아
+          달력 오른쪽에 빈 여백이 생긴다 */}
       <DialogRoot open={open} onOpenChange={setOpen}>
-        <DialogContent title={label ?? '날짜 선택'} showCloseButton>
-          {/* DatePicker는 스스로 폭을 제한하지 않고 부모를 채운다 — 달력에 필요한 폭을 여기서 준다 */}
-          <Box width="358px" maxWidth="100%" padding="x4">
+        <DialogContent title={label ?? '날짜 선택'} showCloseButton maxWidth="390px">
+          {/* DatePicker는 스스로 폭을 제한하지 않고 부모를 채운다 */}
+          <Box width="100%" padding="x4">
             <DatePicker
               today={today}
               value={toCalendarDate(value)}

@@ -6,15 +6,14 @@ import {
   IconPlusLine,
   IconTrashcanLine,
 } from '@karrotmarket/react-monochrome-icon'
-import { Badge, Icon, PrefixIcon } from '@seed-design/react'
+import { Badge, Icon, Portal, PrefixIcon } from '@seed-design/react'
 import { ActionButton } from 'seed-design/ui/action-button'
 import {
-  DialogAction,
-  DialogBody,
-  DialogContent,
-  DialogFooter,
-  DialogRoot,
-} from 'seed-design/ui/dialog'
+  ResponsiveSidePanelBody,
+  ResponsiveSidePanelContent,
+  ResponsiveSidePanelFooter,
+  ResponsiveSidePanelRoot,
+} from 'seed-design/ui/responsive-side-panel'
 import {
   SelectContent,
   SelectGroup,
@@ -193,12 +192,16 @@ function CategoriesTab() {
           </TableBody>
         </Table>
       </div>
+      {/* Portal 필수: SEED Tabs의 content가 transform을 걸어 position:fixed의 containing block이
+          되어버린다. 감싸지 않으면 패널/바텀시트가 뷰포트가 아니라 탭 패널 안에 갇힌다. */}
 
-      <DialogRoot open={open} onOpenChange={setOpen}>
-        <DialogContent title={editing ? '카테고리 수정' : '카테고리 추가'}>
-          <DialogBody>
+      <Portal>
+
+        <ResponsiveSidePanelRoot open={open} onOpenChange={setOpen}>
+        <ResponsiveSidePanelContent title={editing ? '카테고리 수정' : '카테고리 추가'}>
+          <ResponsiveSidePanelBody>
             <div className="flex flex-col gap-x4">
-              <TextField label="대분류" value={major} onValueChange={({ value }) => setMajor(value)}>
+              <TextField size="responsive" label="대분류" value={major} onValueChange={({ value }) => setMajor(value)}>
                 <TextFieldInput list="cat-major-options" placeholder="예: 식비" />
               </TextField>
               <datalist id="cat-major-options">
@@ -206,10 +209,10 @@ function CategoriesTab() {
                   <option key={m} value={m} />
                 ))}
               </datalist>
-              <TextField label="소분류" value={minor} onValueChange={({ value }) => setMinor(value)}>
+              <TextField size="responsive" label="소분류" value={minor} onValueChange={({ value }) => setMinor(value)}>
                 <TextFieldInput placeholder="비우면 '미분류'" />
               </TextField>
-              <SelectRoot
+              <SelectRoot size="responsive"
                 label="구분"
                 value={[kind]}
                 onValueChange={([v]) => setKind(v as TransactionKind)}
@@ -223,7 +226,7 @@ function CategoriesTab() {
                   </SelectGroup>
                 </SelectContent>
               </SelectRoot>
-              <SelectRoot
+              <SelectRoot size="responsive"
                 label="성격"
                 value={[nature]}
                 onValueChange={([v]) => setNature(v as CategoryNature)}
@@ -238,16 +241,17 @@ function CategoriesTab() {
               </SelectRoot>
               {error && <p className="t4-regular text-fg-critical">{error}</p>}
             </div>
-          </DialogBody>
-          <DialogFooter>
-            <DialogAction variant="neutralWeak" onClick={() => setOpen(false)}>
+          </ResponsiveSidePanelBody>
+          <ResponsiveSidePanelFooter>
+            <ActionButton variant="neutralWeak" onClick={() => setOpen(false)}>
               취소
-            </DialogAction>
+            </ActionButton>
             {/* 검증 실패 시 다이얼로그를 열어둬야 하므로 DialogAction이 아니라 ActionButton */}
             <ActionButton onClick={submit}>{editing ? '수정' : '추가'}</ActionButton>
-          </DialogFooter>
-        </DialogContent>
-      </DialogRoot>
+          </ResponsiveSidePanelFooter>
+        </ResponsiveSidePanelContent>
+        </ResponsiveSidePanelRoot>
+      </Portal>
     </div>
   )
 }
@@ -386,15 +390,19 @@ function AccountsTab() {
           </TableBody>
         </Table>
       </div>
+      {/* Portal 필수: SEED Tabs의 content가 transform을 걸어 position:fixed의 containing block이
+          되어버린다. 감싸지 않으면 패널/바텀시트가 뷰포트가 아니라 탭 패널 안에 갇힌다. */}
 
-      <DialogRoot open={open} onOpenChange={setOpen}>
-        <DialogContent title={editing ? '계정 수정' : '계정 추가'}>
-          <DialogBody>
+      <Portal>
+
+        <ResponsiveSidePanelRoot open={open} onOpenChange={setOpen}>
+        <ResponsiveSidePanelContent title={editing ? '계정 수정' : '계정 추가'}>
+          <ResponsiveSidePanelBody>
             <div className="flex flex-col gap-x4">
-              <TextField label="이름" value={name} onValueChange={({ value }) => setName(value)}>
+              <TextField size="responsive" label="이름" value={name} onValueChange={({ value }) => setName(value)}>
                 <TextFieldInput />
               </TextField>
-              <SelectRoot
+              <SelectRoot size="responsive"
                 label="유형"
                 value={[type]}
                 onValueChange={([v]) => setType(v as AccountType)}
@@ -409,7 +417,7 @@ function AccountsTab() {
                 </SelectContent>
               </SelectRoot>
               {type === 'easy_pay' && (
-                <SelectRoot
+                <SelectRoot size="responsive"
                   label="기본 연결 계정 (선택)"
                   description={
                     linkableAccounts.length === 0
@@ -430,7 +438,7 @@ function AccountsTab() {
                   </SelectContent>
                 </SelectRoot>
               )}
-              <SelectRoot
+              <SelectRoot size="responsive"
                 label="소유자"
                 value={memberId ? [memberId] : []}
                 onValueChange={([v]) => setMemberId(v ?? '')}
@@ -444,7 +452,7 @@ function AccountsTab() {
                   </SelectGroup>
                 </SelectContent>
               </SelectRoot>
-              <TextField
+              <TextField size="responsive"
                 label="개설 잔액 (원)"
                 value={openingBalance}
                 onValueChange={({ value }) => setOpeningBalance(value)}
@@ -462,15 +470,16 @@ function AccountsTab() {
               </div>
               {error && <p className="t4-regular text-fg-critical">{error}</p>}
             </div>
-          </DialogBody>
-          <DialogFooter>
-            <DialogAction variant="neutralWeak" onClick={() => setOpen(false)}>
+          </ResponsiveSidePanelBody>
+          <ResponsiveSidePanelFooter>
+            <ActionButton variant="neutralWeak" onClick={() => setOpen(false)}>
               취소
-            </DialogAction>
+            </ActionButton>
             <ActionButton onClick={submit}>{editing ? '수정' : '추가'}</ActionButton>
-          </DialogFooter>
-        </DialogContent>
-      </DialogRoot>
+          </ResponsiveSidePanelFooter>
+        </ResponsiveSidePanelContent>
+        </ResponsiveSidePanelRoot>
+      </Portal>
     </div>
   )
 }
@@ -552,12 +561,16 @@ function MembersTab() {
           </TableBody>
         </Table>
       </div>
+      {/* Portal 필수: SEED Tabs의 content가 transform을 걸어 position:fixed의 containing block이
+          되어버린다. 감싸지 않으면 패널/바텀시트가 뷰포트가 아니라 탭 패널 안에 갇힌다. */}
 
-      <DialogRoot open={open} onOpenChange={setOpen}>
-        <DialogContent title={editing ? '구성원 수정' : '구성원 추가'}>
-          <DialogBody>
+      <Portal>
+
+        <ResponsiveSidePanelRoot open={open} onOpenChange={setOpen}>
+        <ResponsiveSidePanelContent title={editing ? '구성원 수정' : '구성원 추가'}>
+          <ResponsiveSidePanelBody>
             <div className="flex flex-col gap-x4">
-              <TextField label="이름" value={name} onValueChange={({ value }) => setName(value)}>
+              <TextField size="responsive" label="이름" value={name} onValueChange={({ value }) => setName(value)}>
                 <TextFieldInput />
               </TextField>
               {/* 색상은 네이티브 color 입력을 그대로 쓴다 — SEED에 대응 컴포넌트가 없다 */}
@@ -575,15 +588,16 @@ function MembersTab() {
               </div>
               {error && <p className="t4-regular text-fg-critical">{error}</p>}
             </div>
-          </DialogBody>
-          <DialogFooter>
-            <DialogAction variant="neutralWeak" onClick={() => setOpen(false)}>
+          </ResponsiveSidePanelBody>
+          <ResponsiveSidePanelFooter>
+            <ActionButton variant="neutralWeak" onClick={() => setOpen(false)}>
               취소
-            </DialogAction>
+            </ActionButton>
             <ActionButton onClick={submit}>{editing ? '수정' : '추가'}</ActionButton>
-          </DialogFooter>
-        </DialogContent>
-      </DialogRoot>
+          </ResponsiveSidePanelFooter>
+        </ResponsiveSidePanelContent>
+        </ResponsiveSidePanelRoot>
+      </Portal>
     </div>
   )
 }
@@ -653,7 +667,7 @@ function AISettingsTab() {
         대시보드 AI 리포트 생성에 사용할 OpenAI API 키와 모델을 설정합니다. 키는 서버에 저장되며 화면에
         다시 표시되지 않습니다.
       </p>
-      <TextField
+      <TextField size="responsive"
         label="OpenAI API 키"
         description={
           settings?.api_key_set
@@ -665,7 +679,7 @@ function AISettingsTab() {
       >
         <TextFieldInput type="password" autoComplete="off" placeholder="sk-..." />
       </TextField>
-      <TextField
+      <TextField size="responsive"
         label="모델"
         description="비우면 기본값(gpt-4.1-mini)이 사용됩니다. OpenAI의 가성비 모델을 권장합니다."
         value={model}

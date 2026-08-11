@@ -17,7 +17,12 @@ import {
   AlertDialogRoot,
   AlertDialogTitle,
 } from "seed-design/ui/alert-dialog";
-import { DialogAction, DialogBody, DialogContent, DialogFooter, DialogRoot } from "seed-design/ui/dialog";
+import {
+  ResponsiveSidePanelBody,
+  ResponsiveSidePanelContent,
+  ResponsiveSidePanelFooter,
+  ResponsiveSidePanelRoot,
+} from 'seed-design/ui/responsive-side-panel'
 import { TextField, TextFieldInput } from "seed-design/ui/text-field";
 
 import { EChart } from "@/components/charts/EChart";
@@ -520,11 +525,11 @@ export function AssetsPage() {
         <EChart option={trendOption} height={320} />
       </Surface>
 
-      <DialogRoot
+      <ResponsiveSidePanelRoot
         open={valuationTarget !== null}
         onOpenChange={(open) => !open && setValuationTarget(null)}
       >
-        <DialogContent
+        <ResponsiveSidePanelContent
           title={`${
             valuationTarget && isStock(valuationTarget.type)
               ? "보유 주식 총합 입력"
@@ -536,7 +541,7 @@ export function AssetsPage() {
               : "기준일의 평가액을 기록해요. 같은 날짜에 다시 기록하면 값이 갱신돼요."
           }
         >
-          <DialogBody>
+          <ResponsiveSidePanelBody>
             <div className="flex flex-col gap-x4">
               <DateField
                 label="기준일"
@@ -544,7 +549,7 @@ export function AssetsPage() {
                 value={valuationDate}
                 onChange={setValuationDate}
               />
-              <TextField
+              <TextField size="responsive"
                 label={
                   valuationTarget && isStock(valuationTarget.type)
                     ? "보유 주식 총합 (원)"
@@ -591,17 +596,17 @@ export function AssetsPage() {
                 <p className="t4-regular text-fg-critical">{valuationError}</p>
               )}
             </div>
-          </DialogBody>
-          <DialogFooter>
-            <DialogAction variant="neutralWeak" onClick={() => setValuationTarget(null)}>
+          </ResponsiveSidePanelBody>
+          <ResponsiveSidePanelFooter>
+            <ActionButton variant="neutralWeak" onClick={() => setValuationTarget(null)}>
               취소
-            </DialogAction>
+            </ActionButton>
             {/* DialogAction은 누르면 다이얼로그를 닫는다 — 검증 실패 시 열어둬야 하므로
                 기록 버튼만 ActionButton을 직접 쓴다 */}
             <ActionButton onClick={submitValuation}>기록</ActionButton>
-          </DialogFooter>
-        </DialogContent>
-      </DialogRoot>
+          </ResponsiveSidePanelFooter>
+        </ResponsiveSidePanelContent>
+      </ResponsiveSidePanelRoot>
 
       {/* 평가액 삭제 확인 — 평가액 갱신 다이얼로그 위에 겹쳐 뜬다 */}
       <AlertDialogRoot
@@ -672,21 +677,21 @@ export function AssetsPage() {
         </AlertDialogContent>
       </AlertDialogRoot>
 
-      <DialogRoot open={goalDialogOpen} onOpenChange={setGoalDialogOpen}>
-        <DialogContent
+      <ResponsiveSidePanelRoot open={goalDialogOpen} onOpenChange={setGoalDialogOpen}>
+        <ResponsiveSidePanelContent
           title={editingGoal ? "목표 수정" : "목표 추가"}
           description="달성률은 가구 전체 총자산(부부 공동) 기준으로 계산돼요."
         >
-          <DialogBody>
+          <ResponsiveSidePanelBody>
             <div className="flex flex-col gap-x4">
-              <TextField
+              <TextField size="responsive"
                 label="목표 이름"
                 value={goalName}
                 onValueChange={({ value }) => setGoalName(value)}
               >
                 <TextFieldInput placeholder="예: 내집마련 1억" />
               </TextField>
-              <TextField
+              <TextField size="responsive"
                 label="목표금액 (원)"
                 value={goalAmount}
                 onValueChange={({ value }) => setGoalAmount(value)}
@@ -702,16 +707,16 @@ export function AssetsPage() {
               />
               {goalError && <p className="t4-regular text-fg-critical">{goalError}</p>}
             </div>
-          </DialogBody>
-          <DialogFooter>
-            <DialogAction variant="neutralWeak" onClick={() => setGoalDialogOpen(false)}>
+          </ResponsiveSidePanelBody>
+          <ResponsiveSidePanelFooter>
+            <ActionButton variant="neutralWeak" onClick={() => setGoalDialogOpen(false)}>
               취소
-            </DialogAction>
+            </ActionButton>
             {/* 검증 실패 시 다이얼로그를 열어둬야 하므로 DialogAction이 아니라 ActionButton */}
             <ActionButton onClick={submitGoal}>{editingGoal ? "수정" : "추가"}</ActionButton>
-          </DialogFooter>
-        </DialogContent>
-      </DialogRoot>
+          </ResponsiveSidePanelFooter>
+        </ResponsiveSidePanelContent>
+      </ResponsiveSidePanelRoot>
     </div>
   );
 }

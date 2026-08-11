@@ -32,12 +32,11 @@ import {
   AlertDialogTitle,
 } from 'seed-design/ui/alert-dialog'
 import {
-  DialogAction,
-  DialogBody,
-  DialogContent,
-  DialogFooter,
-  DialogRoot,
-} from 'seed-design/ui/dialog'
+  ResponsiveSidePanelBody,
+  ResponsiveSidePanelContent,
+  ResponsiveSidePanelFooter,
+  ResponsiveSidePanelRoot,
+} from 'seed-design/ui/responsive-side-panel'
 import {
   SelectContent,
   SelectGroup,
@@ -1397,13 +1396,13 @@ export function TransactionsPage() {
         </div>
       )}
 
-      <DialogRoot open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent
+      <ResponsiveSidePanelRoot open={dialogOpen} onOpenChange={setDialogOpen}>
+        <ResponsiveSidePanelContent
           title={editing ? '거래 수정' : '거래 추가'}
           description={editing ? '거래 내용을 수정합니다.' : '새 지출/수입/이체 거래를 기록합니다.'}
         >
           {/* 필드가 많아 짧은 뷰포트에서 넘친다 — DialogBody가 자체적으로 본문만 스크롤시킨다 */}
-          <DialogBody>
+          <ResponsiveSidePanelBody>
             <div className="flex flex-col gap-x4">
               <div className="grid grid-cols-2 gap-x3">
                 <DateField
@@ -1411,14 +1410,14 @@ export function TransactionsPage() {
                   value={form.date}
                   onChange={(date) => setForm({ ...form, date })}
                 />
-                <TextField
+                <TextField size="responsive"
                   label="시간 (선택)"
                   value={form.time}
                   onValueChange={({ value }) => setForm({ ...form, time: value })}
                 >
                   <TextFieldInput type="time" step="1" aria-label="시간" />
                 </TextField>
-                <SelectRoot
+                <SelectRoot size="responsive"
                   label="구분"
                   value={[form.kind]}
                   onValueChange={([v]) =>
@@ -1441,7 +1440,7 @@ export function TransactionsPage() {
                   </SelectContent>
                 </SelectRoot>
               </div>
-              <TextField
+              <TextField size="responsive"
                 label="금액 (원)"
                 value={form.amount}
                 onValueChange={({ value }) => setForm({ ...form, amount: value })}
@@ -1449,7 +1448,7 @@ export function TransactionsPage() {
                 <TextFieldInput type="number" min={1} placeholder="예: 15000" />
               </TextField>
               <div className="grid grid-cols-2 gap-x3">
-                <SelectRoot
+                <SelectRoot size="responsive"
                   label="대분류"
                   value={form.category_major ? [form.category_major] : []}
                   onValueChange={([v]) =>
@@ -1465,7 +1464,7 @@ export function TransactionsPage() {
                       </SelectGroup>
                   </SelectContent>
                 </SelectRoot>
-                <SelectRoot
+                <SelectRoot size="responsive"
                   label="소분류"
                   value={form.category_id ? [form.category_id] : []}
                   onValueChange={([v]) => setForm({ ...form, category_id: v ?? '' })}
@@ -1484,7 +1483,7 @@ export function TransactionsPage() {
                 </SelectRoot>
               </div>
               <div className="grid grid-cols-2 gap-x3">
-                <SelectRoot
+                <SelectRoot size="responsive"
                   label={form.kind === 'transfer' ? '출금 계정' : '자산 계정'}
                   value={form.account_id ? [form.account_id] : []}
                   onValueChange={([v]) => {
@@ -1509,7 +1508,7 @@ export function TransactionsPage() {
                   </SelectContent>
                 </SelectRoot>
                 {form.kind === 'transfer' && (
-                  <SelectRoot
+                  <SelectRoot size="responsive"
                     label="입금 계정"
                     value={form.counter_account_id ? [form.counter_account_id] : []}
                     onValueChange={([v]) => setForm({ ...form, counter_account_id: v ?? '' })}
@@ -1528,7 +1527,7 @@ export function TransactionsPage() {
                 )}
                 {formAccountIsEasyPay && (
                   <div className="col-span-2">
-                    <SelectRoot
+                    <SelectRoot size="responsive"
                       label="연결 계정 (선택)"
                       description="이 건이 실제로 결제된 카드/은행 계정이에요. 고르지 않으면 계정에 설정된 기본 연결을 따라가요."
                       value={[form.linked_account_id]}
@@ -1546,7 +1545,7 @@ export function TransactionsPage() {
                     </SelectRoot>
                   </div>
                 )}
-                <SelectRoot
+                <SelectRoot size="responsive"
                   label="구성원"
                   value={[form.member_id]}
                   onValueChange={([v]) => setForm({ ...form, member_id: v })}
@@ -1562,7 +1561,7 @@ export function TransactionsPage() {
                   </SelectContent>
                 </SelectRoot>
                 <div className="col-span-2">
-                  <TextField
+                  <TextField size="responsive"
                     label="메모"
                     value={form.memo}
                     onValueChange={({ value }) => setForm({ ...form, memo: value })}
@@ -1573,10 +1572,10 @@ export function TransactionsPage() {
               </div>
               {formError && <p className="t4-regular text-fg-critical">{formError}</p>}
             </div>
-          </DialogBody>
+          </ResponsiveSidePanelBody>
           {/* "묶음" 진입 버튼 — 수정 중이며 아직 묶이지 않은 수입/지출일 때만.
               이체는 묶음(수입+지출) 대상이 아니고, 이미 묶인 거래는 해제 후 수정하도록 안내한다. */}
-          <DialogFooter>
+          <ResponsiveSidePanelFooter>
             {editing && !editing.link_id && editing.kind !== 'transfer' && (
               <ActionButton variant="neutralOutline" onClick={() => openLinkPicker(editing)}>
                 <PrefixIcon svg={<IconPaperclipLine />} />
@@ -1588,18 +1587,18 @@ export function TransactionsPage() {
                 묶음을 해제한 뒤 수정할 수 있어요
               </p>
             )}
-            <DialogAction variant="neutralWeak" onClick={() => setDialogOpen(false)}>
+            <ActionButton variant="neutralWeak" onClick={() => setDialogOpen(false)}>
               취소
-            </DialogAction>
+            </ActionButton>
             {/* 검증 실패 시 다이얼로그를 열어둬야 하므로 DialogAction이 아니라 ActionButton */}
             <ActionButton onClick={submit}>{editing ? '수정' : '추가'}</ActionButton>
-          </DialogFooter>
-        </DialogContent>
-      </DialogRoot>
+          </ResponsiveSidePanelFooter>
+        </ResponsiveSidePanelContent>
+      </ResponsiveSidePanelRoot>
 
-      <DialogRoot open={importOpen} onOpenChange={setImportOpen}>
+      <ResponsiveSidePanelRoot open={importOpen} onOpenChange={setImportOpen}>
         {/* 계정 매핑/검토 단계는 표가 넓어 다이얼로그 폭을 넓힌다 */}
-        <DialogContent
+        <ResponsiveSidePanelContent
           maxWidth={importPreview && !importResult ? '42rem' : '28rem'}
           title={
               importResult
@@ -1624,7 +1623,7 @@ export function TransactionsPage() {
                     : '뱅크샐러드 내보내기 파일의 "가계부 내역"에서 선택한 달만 가져옵니다.'
           }
         >
-          <DialogBody>
+          <ResponsiveSidePanelBody>
           {importResult ? (
             <div className="space-y-(--dimension-x3) t4-regular">
               <p>
@@ -1695,7 +1694,7 @@ export function TransactionsPage() {
                         </span>
                       </div>
                       <div className="flex flex-wrap items-center gap-x2">
-                        <SelectRoot
+                        <SelectRoot size="responsive"
                           value={[choice?.action ?? 'create']}
                           onValueChange={([v]) =>
                             setMappingChoices((prev) => ({
@@ -1726,7 +1725,7 @@ export function TransactionsPage() {
                           </SelectContent>
                         </SelectRoot>
                         {choice?.action === 'link' && (
-                          <SelectRoot
+                          <SelectRoot size="responsive"
                             value={choice.account_id ? [choice.account_id] : []}
                             onValueChange={([v]) =>
                               setMappingChoices((prev) => ({
@@ -1759,7 +1758,7 @@ export function TransactionsPage() {
                               {SOURCE_KIND_LABEL[s.kind]} 계정으로 생성
                             </span>
                           ) : (
-                            <SelectRoot
+                            <SelectRoot size="responsive"
                               value={[choice.type]}
                               onValueChange={([v]) =>
                                 setMappingChoices((prev) => ({
@@ -1883,7 +1882,7 @@ export function TransactionsPage() {
                         <p className="truncate t2-regular text-fg-neutral-muted">{r.description}</p>
                       )}
                       <div className="flex flex-wrap items-center gap-x2">
-                        <SelectRoot
+                        <SelectRoot size="responsive"
                           value={[decision?.action ?? r.suggested]}
                           onValueChange={([v]) =>
                             setReviewDecisions((prev) => ({
@@ -1912,7 +1911,7 @@ export function TransactionsPage() {
                               자동 페어 ↔ {pairRow?.account_name} ({r.pair_row}행)
                             </span>
                           ) : (
-                            <SelectRoot
+                            <SelectRoot size="responsive"
                               value={decision.counter_account_id ? [decision.counter_account_id] : []}
                               onValueChange={([v]) =>
                                 setReviewDecisions((prev) => ({
@@ -1963,7 +1962,7 @@ export function TransactionsPage() {
               <div className="w-40">
                 <MonthField label="가져올 월" value={importMonth} onChange={setImportMonth} />
               </div>
-              <SelectRoot
+              <SelectRoot size="responsive"
                 label="구성원"
                 description="업로드되는 모든 거래가 이 구성원의 거래로 기록돼요. 엑셀에 처음 등장하는 자산 계정도 이 구성원의 소유로 생성돼요."
                 value={importMemberId ? [importMemberId] : []}
@@ -1985,8 +1984,8 @@ export function TransactionsPage() {
               {importError && <p className="t4-regular text-fg-critical">{importError}</p>}
             </div>
           )}
-          </DialogBody>
-          <DialogFooter>
+          </ResponsiveSidePanelBody>
+          <ResponsiveSidePanelFooter>
             {importResult ? (
               <ActionButton onClick={() => setImportOpen(false)}>닫기</ActionButton>
             ) : importPreview && importStep === 'accounts' ? (
@@ -2037,9 +2036,9 @@ export function TransactionsPage() {
                 </ActionButton>
               </>
             )}
-          </DialogFooter>
-        </DialogContent>
-      </DialogRoot>
+          </ResponsiveSidePanelFooter>
+        </ResponsiveSidePanelContent>
+      </ResponsiveSidePanelRoot>
 
       {/* 되돌릴 수 없는 일괄 삭제라 Dialog가 아니라 AlertDialog를 쓴다 */}
       <AlertDialogRoot open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
@@ -2071,12 +2070,12 @@ export function TransactionsPage() {
 
       {/* 연결 대상 선택 — 수정 모달 "묶음" 버튼에서 진입. 현재 목록의 반대 구분 후보를 고른다.
           본문만 스크롤(후보가 많을 수 있음), 헤더/푸터 고정 */}
-      <DialogRoot open={linkPickerOpen} onOpenChange={setLinkPickerOpen}>
-        <DialogContent
+      <ResponsiveSidePanelRoot open={linkPickerOpen} onOpenChange={setLinkPickerOpen}>
+        <ResponsiveSidePanelContent
           title="연결할 거래 선택"
           description="현재 목록에서 묶을 상대 거래를 골라 하나의 묶음으로 연결해요. 원본은 그대로 남고 통계에만 반영돼요."
         >
-          <DialogBody>
+          <ResponsiveSidePanelBody>
             <div className="space-y-(--dimension-x3) t4-regular">
               {linkSource && (
                 <div className="space-y-(--dimension-x1) rounded-r1_5 border p-x2 t2-regular">
@@ -2142,7 +2141,7 @@ export function TransactionsPage() {
               </div>
               {linkExpense && linkIncome && (
                 <>
-                  <SelectRoot
+                  <SelectRoot size="responsive"
                     label="묶음 유형"
                     value={[linkType]}
                     onValueChange={([v]) => setLinkType(v as LinkType)}
@@ -2183,25 +2182,25 @@ export function TransactionsPage() {
               )}
               {linkError && <p className="t4-regular text-fg-critical">{linkError}</p>}
             </div>
-          </DialogBody>
-          <DialogFooter>
-            <DialogAction variant="neutralWeak" onClick={() => setLinkPickerOpen(false)}>
+          </ResponsiveSidePanelBody>
+          <ResponsiveSidePanelFooter>
+            <ActionButton variant="neutralWeak" onClick={() => setLinkPickerOpen(false)}>
               취소
-            </DialogAction>
+            </ActionButton>
             <ActionButton onClick={confirmLink} loading={linking} disabled={!linkTarget}>
               묶기
             </ActionButton>
-          </DialogFooter>
-        </DialogContent>
-      </DialogRoot>
+          </ResponsiveSidePanelFooter>
+        </ResponsiveSidePanelContent>
+      </ResponsiveSidePanelRoot>
 
       {/* 묶음 보기 — 병합 행에서 두 다리 상세 확인 + 해제 */}
-      <DialogRoot open={viewOpen} onOpenChange={setViewOpen}>
-        <DialogContent
+      <ResponsiveSidePanelRoot open={viewOpen} onOpenChange={setViewOpen}>
+        <ResponsiveSidePanelContent
           title="묶음 보기"
           description={`${viewTx?.link_type ? LINK_LABEL[viewTx.link_type] : '묶음'}으로 연결된 두 거래예요. 해제하면 각각 개별 거래로 돌아가요.`}
         >
-          <DialogBody>
+          <ResponsiveSidePanelBody>
           {viewTx &&
             isBundle(viewTx) &&
             (() => {
@@ -2264,8 +2263,8 @@ export function TransactionsPage() {
                 </div>
               )
             })()}
-          </DialogBody>
-          <DialogFooter>
+          </ResponsiveSidePanelBody>
+          <ResponsiveSidePanelFooter>
             <ActionButton
               variant="neutralOutline"
               className="text-fg-critical"
@@ -2275,10 +2274,10 @@ export function TransactionsPage() {
               <PrefixIcon svg={<IconScissorsLine />} />
               묶음 해제
             </ActionButton>
-            <DialogAction>닫기</DialogAction>
-          </DialogFooter>
-        </DialogContent>
-      </DialogRoot>
+            <ActionButton onClick={() => setViewOpen(false)}>닫기</ActionButton>
+          </ResponsiveSidePanelFooter>
+        </ResponsiveSidePanelContent>
+      </ResponsiveSidePanelRoot>
     </div>
   )
 }

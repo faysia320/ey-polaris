@@ -86,7 +86,8 @@ SEED는 모바일 앱 디자인 시스템이라 웹 대시보드 관용구가 �
 ### 알아둘 제약
 
 - **당근 오렌지가 앱 전체를 지배한다.** 기본 CTA·선택 상태·포커스 링이 전부 `#f60`이다. 되돌리려면 `--seed-color-palette-carrot-*` 오버라이드가 필요하다
-- **SEED 입력 컴포넌트는 단일(터치) 사이즈뿐이다.** TextField에 size 옵션이 없어 예산 표의 행 높이가 이전보다 두툼하다
+- **입력 컴포넌트의 `size`는 반드시 `responsive`로 준다.** 기본값이 `large`(52px, 터치 기준)라 데스크톱 표 안에서 지나치게 두툼하고, 일부만 `responsive`로 두면 `lg`(1280px) 이상에서 필드 높이가 갈린다. `responsive`는 1280px 미만 `large` / 이상 `medium`(40px)이다
+- **SEED Tabs 안의 오버레이는 `Portal`로 감싸야 한다.** `seed-tabs__content`에 transform이 걸려 있어 `position: fixed`의 containing block이 되고, 감싸지 않으면 사이드 패널·바텀시트가 뷰포트가 아니라 탭 패널 안에 갇힌다
 - **`touchTarget`은 남겼다.** SEED ActionButton은 `size=small`이 36px, `size=medium`+iconOnly가 40px로 44px 권장치에 못 미쳐 모바일 히트 영역 확장이 여전히 값을 한다
 - **내비 항목이 링크가 아니라 버튼이다.** `SideNavigationGroup`의 `items` API가 `onClick`만 받는다(SEED 블록 예제와 동일) — 새 탭으로 열기가 지원되지 않는다
 
@@ -99,7 +100,8 @@ SEED는 모바일 앱 디자인 시스템이라 웹 대시보드 관용구가 �
    grep -rE '\b(bg|text|border|ring)-(primary|secondary|muted|accent|destructive|card|popover|background|foreground|border|input|ring|sidebar)\b' frontend/src --include=*.tsx
    grep -rE '\b(bg|text|border)-(rose|emerald|amber|sky|violet|yellow|zinc)-[0-9]' frontend/src --include=*.tsx
    ```
-4. **레이어 순서 회귀 검사** — SEED 컴포넌트에 Tailwind 유틸(`bg-red-500`)이 먹히는지. 안 먹히면 `index.html`/`index.css`의 `@layer` 선언이 깨진 것
+4. **레이어 순서 회귀 검사** — SEED 컴포넌트에 Tailwind 유틸이 먹히는지. 안 먹히면 `index.html`/`index.css`의 `@layer` 선언이 깨진 것
+   - 검사에는 **앱에서 실제로 쓰는 클래스**를 써야 한다. `bg-red-500`처럼 소스에 없는 클래스는 Tailwind가 생성조차 하지 않아 "레이어가 깨진 것"처럼 오독하기 쉽다 (실제로 한 번 그렇게 잘못 판단했다). `bg-bg-neutral-weak`처럼 번들에 있는 유틸로 검사한다
 5. **375px 모바일** — `resize_window`가 이 환경에서 동작하지 않아 iframe 프로브로 검사한다. 5개 화면 모두 `document.documentElement.scrollWidth === window.innerWidth`(=371)로 가로 스크롤 0을 확인했다
    ```js
    const f = document.createElement('iframe')

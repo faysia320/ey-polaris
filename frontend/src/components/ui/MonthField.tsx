@@ -71,8 +71,10 @@ export function MonthField({
         )}
       </FieldButton>
 
+      {/* 피커는 폼(사이드 패널) 위에 겹쳐 뜬다 — DateField와 같은 폭으로 맞춰
+          두 피커가 화면에서 같은 크기로 열리게 한다 */}
       <DialogRoot open={open} onOpenChange={setOpen}>
-        <DialogContent title={label ?? '월 선택'} showCloseButton>
+        <DialogContent title={label ?? '월 선택'} showCloseButton maxWidth="390px">
           <div className="flex flex-col gap-x4 p-x4">
             <div className="flex items-center justify-between">
               <ActionButton

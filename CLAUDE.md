@@ -32,9 +32,17 @@ UI는 **전부** 당근 [SEED Design](https://seed-design.io)이다. shadcn/ui�
 - **세로 간격은 `space-y-*`가 아니라 `flex flex-col gap-x*`로 잡는다.** SEED는 `p-*`/`gap-*`/`m-*`/`w-*`는 `@utility`로 재정의하지만 `space-y-*`는 손대지 않아 `space-y-x6`가 동작하지 않는다. 목록처럼 flex를 못 쓰는 자리에서는 `space-y-(--dimension-x1)`로 토큰을 직접 참조한다
   - (Tailwind 기본 스케일 `p-4`도 여전히 동작한다 — 커스텀 `@utility`가 값을 못 찾으면 내장으로 폴백한다. 금지하는 이유는 기능이 아니라 일관성이다)
 - **컨테이너 폭·높이는 예외.** SEED dimension 스케일은 64px(`x16`)에서 끝나므로 `w-40` 같은 레이아웃 치수는 Tailwind 스케일을 쓴다
+- **입력 컴포넌트(`TextField`/`SelectRoot`/`FieldButton`)에는 항상 `size="responsive"`를 준다.** 기본값 `large`(52px, 터치 기준)는 데스크톱 표에서 지나치게 두툼하고, 일부만 responsive면 `lg`(1280px) 경계에서 필드 높이가 갈린다. responsive = 1280px 미만 `large` / 이상 `medium`(40px)
 - 아이콘은 `@karrotmarket/react-monochrome-icon`. 버튼 안에서는 `Icon`(iconOnly) / `PrefixIcon` / `SuffixIcon` 슬롯을 쓴다
 - 색상 모드는 **`dark-only` 고정** (`frontend/vite.config.ts`의 `seedDesignPlugin`)
 - CSS cascade layer 순서(`theme, base, seed-base, components, seed-components, utilities`)를 `frontend/index.html`과 `frontend/src/index.css` 양쪽에 선언해 Tailwind 유틸리티가 SEED 컴포넌트 스타일을 덮어쓸 수 있게 했다. **이 순서를 바꾸지 말 것**
+
+### 오버레이 규칙
+
+- **입력·내용 패널은 `ResponsiveSidePanel`** (데스크톱=사이드 드로어, 모바일=바텀시트). 거래 추가/수정, 카테고리·계정·구성원 편집, 엑셀 업로드, 세부 내역 등 화면 단위 오버레이가 전부 여기 해당한다
+- **되돌릴 수 없는 확인만 `AlertDialog`** (월 전체 삭제, 계정 삭제, 전월 예산 덮어쓰기). 파괴적 확인은 흐름을 끊어야 하므로 모달을 유지한다
+- **`DateField`/`MonthField`의 피커는 `Dialog`** — 패널 위에 겹쳐 뜨는 피커다. 패널로 바꾸면 패널 안의 패널이 된다
+- **SEED Tabs 안에서 오버레이를 열면 `Portal`로 감싼다.** `seed-tabs__content`에 transform이 걸려 `position: fixed`의 containing block이 되어, 감싸지 않으면 패널이 뷰포트가 아니라 탭 패널 안에 갇힌다 (`SettingsPage.tsx` 참고)
 
 ### SEED에 대응이 없어 직접 유지하는 것 (`src/components/ui/`)
 
