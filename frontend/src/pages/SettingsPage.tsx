@@ -6,7 +6,7 @@ import {
   IconPlusLine,
   IconTrashcanLine,
 } from '@karrotmarket/react-monochrome-icon'
-import { Badge, Icon, Portal, PrefixIcon } from '@seed-design/react'
+import { Badge, Icon, Portal, PrefixIcon, ResponsivePair } from '@seed-design/react'
 import { ActionButton } from 'seed-design/ui/action-button'
 import {
   ResponsiveSidePanelBody,
@@ -126,7 +126,7 @@ function CategoriesTab() {
           고정 지출은 <Badge variant="outline">정기 궤도</Badge>, 변동 지출은{' '}
           <Badge variant="outline">유성우</Badge>로 표시돼요.
         </p>
-        <ActionButton size="small" className="shrink-0" onClick={openCreate}>
+        <ActionButton variant="neutralSolid" size="small" className="shrink-0" onClick={openCreate}>
           <PrefixIcon svg={<IconPlusLine />} />
           카테고리 추가
         </ActionButton>
@@ -243,11 +243,14 @@ function CategoriesTab() {
             </div>
           </ResponsiveSidePanelBody>
           <ResponsiveSidePanelFooter>
-            <ActionButton variant="neutralWeak" onClick={() => setOpen(false)}>
-              취소
-            </ActionButton>
-            {/* 검증 실패 시 다이얼로그를 열어둬야 하므로 DialogAction이 아니라 ActionButton */}
-            <ActionButton onClick={submit}>{editing ? '수정' : '추가'}</ActionButton>
+            <ResponsivePair gap="x2">
+              <ActionButton variant="neutralWeak" onClick={() => setOpen(false)}>
+                취소
+              </ActionButton>
+              <ActionButton variant="neutralSolid" onClick={submit}>
+                {editing ? '수정' : '추가'}
+              </ActionButton>
+            </ResponsivePair>
           </ResponsiveSidePanelFooter>
         </ResponsiveSidePanelContent>
         </ResponsiveSidePanelRoot>
@@ -342,7 +345,7 @@ function AccountsTab() {
   return (
     <div className="flex flex-col gap-x4">
       <div className="flex justify-end">
-        <ActionButton size="small" onClick={openCreate}>
+        <ActionButton variant="neutralSolid" size="small" onClick={openCreate}>
           <PrefixIcon svg={<IconPlusLine />} />
           계정 추가
         </ActionButton>
@@ -472,10 +475,14 @@ function AccountsTab() {
             </div>
           </ResponsiveSidePanelBody>
           <ResponsiveSidePanelFooter>
-            <ActionButton variant="neutralWeak" onClick={() => setOpen(false)}>
-              취소
-            </ActionButton>
-            <ActionButton onClick={submit}>{editing ? '수정' : '추가'}</ActionButton>
+            <ResponsivePair gap="x2">
+              <ActionButton variant="neutralWeak" onClick={() => setOpen(false)}>
+                취소
+              </ActionButton>
+              <ActionButton variant="neutralSolid" onClick={submit}>
+                {editing ? '수정' : '추가'}
+              </ActionButton>
+            </ResponsivePair>
           </ResponsiveSidePanelFooter>
         </ResponsiveSidePanelContent>
         </ResponsiveSidePanelRoot>
@@ -526,7 +533,7 @@ function MembersTab() {
   return (
     <div className="flex flex-col gap-x4">
       <div className="flex justify-end">
-        <ActionButton size="small" onClick={openCreate}>
+        <ActionButton variant="neutralSolid" size="small" onClick={openCreate}>
           <PrefixIcon svg={<IconPlusLine />} />
           구성원 추가
         </ActionButton>
@@ -590,10 +597,14 @@ function MembersTab() {
             </div>
           </ResponsiveSidePanelBody>
           <ResponsiveSidePanelFooter>
-            <ActionButton variant="neutralWeak" onClick={() => setOpen(false)}>
-              취소
-            </ActionButton>
-            <ActionButton onClick={submit}>{editing ? '수정' : '추가'}</ActionButton>
+            <ResponsivePair gap="x2">
+              <ActionButton variant="neutralWeak" onClick={() => setOpen(false)}>
+                취소
+              </ActionButton>
+              <ActionButton variant="neutralSolid" onClick={submit}>
+                {editing ? '수정' : '추가'}
+              </ActionButton>
+            </ResponsivePair>
           </ResponsiveSidePanelFooter>
         </ResponsiveSidePanelContent>
         </ResponsiveSidePanelRoot>
@@ -690,7 +701,7 @@ function AISettingsTab() {
       {error && <p className="t4-regular text-fg-critical">{error}</p>}
       {saved && <p className="t4-regular text-fg-positive">저장되었습니다.</p>}
       <div className="flex">
-        <ActionButton onClick={handleSave} loading={saving}>
+        <ActionButton variant="neutralSolid" onClick={handleSave} loading={saving}>
           저장
         </ActionButton>
       </div>

@@ -185,7 +185,7 @@ export function DashboardPage() {
           <h2 className="t5-bold flex items-center gap-x2">
             <span>🤖</span> AI 리포트
           </h2>
-          <ActionButton size="small" onClick={handleGenerateReport} loading={reportLoading}>
+          <ActionButton variant="neutralSolid" size="small" onClick={handleGenerateReport} loading={reportLoading}>
             {report ? '다시 생성' : '리포트 생성'}
           </ActionButton>
         </div>

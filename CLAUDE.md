@@ -42,6 +42,8 @@ UI는 **전부** 당근 [SEED Design](https://seed-design.io)이다. shadcn/ui�
 - **입력·내용 패널은 `ResponsiveSidePanel`** (데스크톱=사이드 드로어, 모바일=바텀시트). 거래 추가/수정, 카테고리·계정·구성원 편집, 엑셀 업로드, 세부 내역 등 화면 단위 오버레이가 전부 여기 해당한다
 - **되돌릴 수 없는 확인만 `AlertDialog`** (월 전체 삭제, 계정 삭제, 전월 예산 덮어쓰기). 파괴적 확인은 흐름을 끊어야 하므로 모달을 유지한다
 - **`DateField`/`MonthField`의 피커는 `Dialog`** — 패널 위에 겹쳐 뜨는 피커다. 패널로 바꾸면 패널 안의 패널이 된다
+- **푸터의 버튼 배치는 호출부가 짠다.** SEED의 `*Footer`는 `flex-direction: column`짜리 빈 컨테이너일 뿐이라, 버튼을 직접 넣으면 **간격 0으로 세로로 붙는다**. 두 개짜리 액션은 항상 `<ResponsivePair gap="x2">`로 감싼다 — 넓으면 가로, 좁으면 세로로 접히고 `wrap-reverse`라 접힐 때 주요 액션(뒤에 쓴 것)이 위로 온다. 그래서 **순서는 `취소` → `확인`**으로 쓴다. 버튼이 셋 이상이면 보조 액션을 `VStack gap="x2"`로 위에 두고 주 액션 쌍만 `ResponsivePair`에 담는다
+- **화면의 주 액션(확인·저장·추가)은 `variant="neutralSolid"`.** `brandSolid`(기본값)는 "브랜드의 핵심 가치를 전달하는 주요 기능, 한 화면에 하나만"이라 폼 CTA에 쓰면 안 된다. `ActionButton`을 variant 없이 쓰면 brandSolid가 되므로 항상 명시한다
 - **SEED Tabs 안에서 오버레이를 열면 `Portal`로 감싼다.** `seed-tabs__content`에 transform이 걸려 `position: fixed`의 containing block이 되어, 감싸지 않으면 패널이 뷰포트가 아니라 탭 패널 안에 갇힌다 (`SettingsPage.tsx` 참고)
 
 ### SEED에 대응이 없어 직접 유지하는 것 (`src/components/ui/`)

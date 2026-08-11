@@ -20,7 +20,7 @@ import {
   IconScissorsLine,
   IconTrashcanLine,
 } from '@karrotmarket/react-monochrome-icon'
-import { Badge, Icon, PrefixIcon, SuffixIcon } from '@seed-design/react'
+import { Badge, Icon, PrefixIcon, ResponsivePair, SuffixIcon, VStack } from '@seed-design/react'
 import { ActionButton } from 'seed-design/ui/action-button'
 import {
   AlertDialogAction,
@@ -1031,7 +1031,7 @@ export function TransactionsPage() {
           >
             <PrefixIcon svg={<IconTrashcanLine />} />월 전체 삭제
           </ActionButton>
-          <ActionButton size="small" onClick={openCreate}>
+          <ActionButton variant="neutralSolid" size="small" onClick={openCreate}>
             <PrefixIcon svg={<IconPlusLine />} />
             거래 추가
           </ActionButton>
@@ -1577,22 +1577,28 @@ export function TransactionsPage() {
           {/* "묶음" 진입 버튼 — 수정 중이며 아직 묶이지 않은 수입/지출일 때만.
               이체는 묶음(수입+지출) 대상이 아니고, 이미 묶인 거래는 해제 후 수정하도록 안내한다. */}
           <ResponsiveSidePanelFooter>
-            {editing && !editing.link_id && editing.kind !== 'transfer' && (
-              <ActionButton variant="neutralOutline" onClick={() => openLinkPicker(editing)}>
-                <PrefixIcon svg={<IconPaperclipLine />} />
-                묶음
-              </ActionButton>
-            )}
-            {editing?.link_id && (
-              <p className="t2-regular self-center text-fg-neutral-muted">
-                묶음을 해제한 뒤 수정할 수 있어요
-              </p>
-            )}
-            <ActionButton variant="neutralWeak" onClick={() => setDialogOpen(false)}>
-              취소
-            </ActionButton>
-            {/* 검증 실패 시 다이얼로그를 열어둬야 하므로 DialogAction이 아니라 ActionButton */}
-            <ActionButton onClick={submit}>{editing ? '수정' : '추가'}</ActionButton>
+            <VStack gap="x2">
+              {editing && !editing.link_id && editing.kind !== 'transfer' && (
+                <ActionButton variant="neutralOutline" onClick={() => openLinkPicker(editing)}>
+                  <PrefixIcon svg={<IconPaperclipLine />} />
+                  묶음
+                </ActionButton>
+              )}
+              {editing?.link_id && (
+                <p className="t2-regular text-center text-fg-neutral-muted">
+                  묶음을 해제한 뒤 수정할 수 있어요
+                </p>
+              )}
+              <ResponsivePair gap="x2">
+                <ActionButton variant="neutralWeak" onClick={() => setDialogOpen(false)}>
+                  취소
+                </ActionButton>
+                {/* 검증 실패 시 패널을 열어둬야 하므로 자동 닫힘이 없는 ActionButton을 쓴다 */}
+                <ActionButton variant="neutralSolid" onClick={submit}>
+                  {editing ? '수정' : '추가'}
+                </ActionButton>
+              </ResponsivePair>
+            </VStack>
           </ResponsiveSidePanelFooter>
         </ResponsiveSidePanelContent>
       </ResponsiveSidePanelRoot>
@@ -1988,9 +1994,11 @@ export function TransactionsPage() {
           </ResponsiveSidePanelBody>
           <ResponsiveSidePanelFooter>
             {importResult ? (
-              <ActionButton onClick={() => setImportOpen(false)}>닫기</ActionButton>
+              <ActionButton variant="neutralSolid" onClick={() => setImportOpen(false)}>
+                닫기
+              </ActionButton>
             ) : importPreview && importStep === 'accounts' ? (
-              <>
+              <ResponsivePair gap="x2">
                 <ActionButton
                   variant="neutralOutline"
                   onClick={() => {
@@ -2002,12 +2010,12 @@ export function TransactionsPage() {
                 >
                   이전
                 </ActionButton>
-                <ActionButton onClick={confirmAccounts} disabled={importing}>
-                  {importing ? '계정 정리 중…' : '계정 확정하고 다음'}
+                <ActionButton variant="neutralSolid" onClick={confirmAccounts} loading={importing}>
+                  계정 확정하고 다음
                 </ActionButton>
-              </>
+              </ResponsivePair>
             ) : importPreview ? (
-              <>
+              <ResponsivePair gap="x2">
                 <ActionButton
                   variant="neutralOutline"
                   onClick={() => {
@@ -2023,19 +2031,19 @@ export function TransactionsPage() {
                 >
                   이전
                 </ActionButton>
-                <ActionButton onClick={confirmReview} disabled={importing}>
-                  {importing ? '등록 중…' : '확정하고 가져오기'}
+                <ActionButton variant="neutralSolid" onClick={confirmReview} loading={importing}>
+                  확정하고 가져오기
                 </ActionButton>
-              </>
+              </ResponsivePair>
             ) : (
-              <>
-                <ActionButton variant="neutralOutline" onClick={() => setImportOpen(false)}>
+              <ResponsivePair gap="x2">
+                <ActionButton variant="neutralWeak" onClick={() => setImportOpen(false)}>
                   취소
                 </ActionButton>
-                <ActionButton onClick={runImport} disabled={importing}>
-                  {importing ? '업로드 중…' : '업로드'}
+                <ActionButton variant="neutralSolid" onClick={runImport} loading={importing}>
+                  업로드
                 </ActionButton>
-              </>
+              </ResponsivePair>
             )}
           </ResponsiveSidePanelFooter>
         </ResponsiveSidePanelContent>
@@ -2055,16 +2063,18 @@ export function TransactionsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction variant="neutralWeak" onClick={() => setBulkDeleteOpen(false)}>
-              취소
-            </AlertDialogAction>
-            <ActionButton
-              variant="criticalSolid"
-              onClick={confirmBulkDelete}
-              loading={bulkDeleting}
-            >
-              {items.length}건 삭제
-            </ActionButton>
+            <ResponsivePair gap="x2">
+              <AlertDialogAction variant="neutralWeak" onClick={() => setBulkDeleteOpen(false)}>
+                취소
+              </AlertDialogAction>
+              <ActionButton
+                variant="criticalSolid"
+                onClick={confirmBulkDelete}
+                loading={bulkDeleting}
+              >
+                {items.length}건 삭제
+              </ActionButton>
+            </ResponsivePair>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialogRoot>
@@ -2185,12 +2195,19 @@ export function TransactionsPage() {
             </div>
           </ResponsiveSidePanelBody>
           <ResponsiveSidePanelFooter>
-            <ActionButton variant="neutralWeak" onClick={() => setLinkPickerOpen(false)}>
-              취소
-            </ActionButton>
-            <ActionButton onClick={confirmLink} loading={linking} disabled={!linkTarget}>
-              묶기
-            </ActionButton>
+            <ResponsivePair gap="x2">
+              <ActionButton variant="neutralWeak" onClick={() => setLinkPickerOpen(false)}>
+                취소
+              </ActionButton>
+              <ActionButton
+                variant="neutralSolid"
+                onClick={confirmLink}
+                loading={linking}
+                disabled={!linkTarget}
+              >
+                묶기
+              </ActionButton>
+            </ResponsivePair>
           </ResponsiveSidePanelFooter>
         </ResponsiveSidePanelContent>
       </ResponsiveSidePanelRoot>
@@ -2266,16 +2283,20 @@ export function TransactionsPage() {
             })()}
           </ResponsiveSidePanelBody>
           <ResponsiveSidePanelFooter>
-            <ActionButton
-              variant="neutralOutline"
-              className="text-fg-critical"
-              onClick={confirmUnlink}
-              loading={unlinking}
-            >
-              <PrefixIcon svg={<IconScissorsLine />} />
-              묶음 해제
-            </ActionButton>
-            <ActionButton onClick={() => setViewOpen(false)}>닫기</ActionButton>
+            <ResponsivePair gap="x2">
+              <ActionButton
+                variant="neutralOutline"
+                className="text-fg-critical"
+                onClick={confirmUnlink}
+                loading={unlinking}
+              >
+                <PrefixIcon svg={<IconScissorsLine />} />
+                묶음 해제
+              </ActionButton>
+              <ActionButton variant="neutralSolid" onClick={() => setViewOpen(false)}>
+                닫기
+              </ActionButton>
+            </ResponsivePair>
           </ResponsiveSidePanelFooter>
         </ResponsiveSidePanelContent>
       </ResponsiveSidePanelRoot>

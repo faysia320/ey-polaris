@@ -10,7 +10,7 @@
  */
 import { useState } from 'react'
 import { IconClockLine } from '@karrotmarket/react-monochrome-icon'
-import { Box, TimePicker } from '@seed-design/react'
+import { Box, ResponsivePair, TimePicker } from '@seed-design/react'
 import { ActionButton } from 'seed-design/ui/action-button'
 import { DialogContent, DialogFooter, DialogRoot } from 'seed-design/ui/dialog'
 import {
@@ -85,17 +85,23 @@ export function TimeField({
             <TimePicker minuteStep={1} value={draft} onValueChange={setDraft} />
           </Box>
           <DialogFooter>
-            <ActionButton variant="neutralWeak" onClick={() => setOpen(false)}>
-              취소
-            </ActionButton>
-            <ActionButton
-              onClick={() => {
-                onChange(fromClockTime(draft))
-                setOpen(false)
-              }}
-            >
-              확인
-            </ActionButton>
+            {/* SEED 푸터는 flex-column 컨테이너일 뿐이라 배치는 호출부가 짠다.
+                ResponsivePair는 넓으면 가로, 좁으면 세로로 접히고 wrap-reverse라
+                접힐 때 주요 액션(뒤에 쓴 것)이 위로 온다 */}
+            <ResponsivePair gap="x2">
+              <ActionButton variant="neutralWeak" onClick={() => setOpen(false)}>
+                취소
+              </ActionButton>
+              <ActionButton
+                variant="neutralSolid"
+                onClick={() => {
+                  onChange(fromClockTime(draft))
+                  setOpen(false)
+                }}
+              >
+                확인
+              </ActionButton>
+            </ResponsivePair>
           </DialogFooter>
         </DialogContent>
       </DialogRoot>

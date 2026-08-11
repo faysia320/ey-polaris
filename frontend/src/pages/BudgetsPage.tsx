@@ -5,7 +5,7 @@ import {
   IconSquare2StackedLine,
   IconTrashcanLine,
 } from '@karrotmarket/react-monochrome-icon'
-import { Icon, PrefixIcon } from '@seed-design/react'
+import { Icon, PrefixIcon, ResponsivePair } from '@seed-design/react'
 import { ActionButton } from 'seed-design/ui/action-button'
 import {
   AlertDialogAction,
@@ -272,12 +272,14 @@ export function BudgetsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction variant="neutralWeak" onClick={() => setConfirmOpen(false)}>
-              취소
-            </AlertDialogAction>
-            <AlertDialogAction variant="criticalSolid" onClick={confirmCopy}>
-              덮어쓰기
-            </AlertDialogAction>
+            <ResponsivePair gap="x2">
+              <AlertDialogAction variant="neutralWeak" onClick={() => setConfirmOpen(false)}>
+                취소
+              </AlertDialogAction>
+              <AlertDialogAction variant="criticalSolid" onClick={confirmCopy}>
+                덮어쓰기
+              </AlertDialogAction>
+            </ResponsivePair>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialogRoot>

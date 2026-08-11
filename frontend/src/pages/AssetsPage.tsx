@@ -6,7 +6,7 @@ import {
   IconPlusLine,
   IconTrashcanLine,
 } from "@karrotmarket/react-monochrome-icon";
-import { Badge, Icon, PrefixIcon } from "@seed-design/react";
+import { Badge, Icon, PrefixIcon, ResponsivePair } from "@seed-design/react";
 import { ActionButton } from "seed-design/ui/action-button";
 import {
   AlertDialogAction,
@@ -396,7 +396,7 @@ export function AssetsPage() {
               부부 공동 목표 — 전체 자산 기준
             </span>
           </span>
-          <ActionButton size="small" className="shrink-0" onClick={openGoalCreate}>
+          <ActionButton variant="neutralSolid" size="small" className="shrink-0" onClick={openGoalCreate}>
             <PrefixIcon svg={<IconPlusLine />} />
             목표 추가
           </ActionButton>
@@ -598,12 +598,14 @@ export function AssetsPage() {
             </div>
           </ResponsiveSidePanelBody>
           <ResponsiveSidePanelFooter>
-            <ActionButton variant="neutralWeak" onClick={() => setValuationTarget(null)}>
-              취소
-            </ActionButton>
-            {/* DialogAction은 누르면 다이얼로그를 닫는다 — 검증 실패 시 열어둬야 하므로
-                기록 버튼만 ActionButton을 직접 쓴다 */}
-            <ActionButton onClick={submitValuation}>기록</ActionButton>
+            <ResponsivePair gap="x2">
+              <ActionButton variant="neutralWeak" onClick={() => setValuationTarget(null)}>
+                취소
+              </ActionButton>
+              <ActionButton variant="neutralSolid" onClick={submitValuation}>
+                기록
+              </ActionButton>
+            </ResponsivePair>
           </ResponsiveSidePanelFooter>
         </ResponsiveSidePanelContent>
       </ResponsiveSidePanelRoot>
@@ -624,20 +626,22 @@ export function AssetsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction
-              variant="neutralWeak"
-              onClick={() => setValuationToDelete(null)}
-              disabled={valuationDeleting}
-            >
-              취소
-            </AlertDialogAction>
-            <ActionButton
-              variant="criticalSolid"
-              onClick={confirmValuationDelete}
-              loading={valuationDeleting}
-            >
-              삭제
-            </ActionButton>
+            <ResponsivePair gap="x2">
+              <AlertDialogAction
+                variant="neutralWeak"
+                onClick={() => setValuationToDelete(null)}
+                disabled={valuationDeleting}
+              >
+                취소
+              </AlertDialogAction>
+              <ActionButton
+                variant="criticalSolid"
+                onClick={confirmValuationDelete}
+                loading={valuationDeleting}
+              >
+                삭제
+              </ActionButton>
+            </ResponsivePair>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialogRoot>
@@ -659,20 +663,22 @@ export function AssetsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction
-              variant="neutralWeak"
-              onClick={() => setAccountToDelete(null)}
-              disabled={accountDeleting}
-            >
-              취소
-            </AlertDialogAction>
-            <ActionButton
-              variant="criticalSolid"
-              onClick={confirmAccountDelete}
-              loading={accountDeleting}
-            >
-              삭제
-            </ActionButton>
+            <ResponsivePair gap="x2">
+              <AlertDialogAction
+                variant="neutralWeak"
+                onClick={() => setAccountToDelete(null)}
+                disabled={accountDeleting}
+              >
+                취소
+              </AlertDialogAction>
+              <ActionButton
+                variant="criticalSolid"
+                onClick={confirmAccountDelete}
+                loading={accountDeleting}
+              >
+                삭제
+              </ActionButton>
+            </ResponsivePair>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialogRoot>
@@ -709,11 +715,14 @@ export function AssetsPage() {
             </div>
           </ResponsiveSidePanelBody>
           <ResponsiveSidePanelFooter>
-            <ActionButton variant="neutralWeak" onClick={() => setGoalDialogOpen(false)}>
-              취소
-            </ActionButton>
-            {/* 검증 실패 시 다이얼로그를 열어둬야 하므로 DialogAction이 아니라 ActionButton */}
-            <ActionButton onClick={submitGoal}>{editingGoal ? "수정" : "추가"}</ActionButton>
+            <ResponsivePair gap="x2">
+              <ActionButton variant="neutralWeak" onClick={() => setGoalDialogOpen(false)}>
+                취소
+              </ActionButton>
+              <ActionButton variant="neutralSolid" onClick={submitGoal}>
+                {editingGoal ? "수정" : "추가"}
+              </ActionButton>
+            </ResponsivePair>
           </ResponsiveSidePanelFooter>
         </ResponsiveSidePanelContent>
       </ResponsiveSidePanelRoot>
