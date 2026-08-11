@@ -20,15 +20,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 디자인 시스템 (SEED Design)
 
-당근 [SEED Design](https://seed-design.io)을 도입했다. 기존 shadcn/ui와 **병존**한다 — SEED 파운데이션만 얹었고 shadcn CSS 변수(`--primary`, `--background` 등)는 SEED로 재매핑하지 않았다.
+UI는 **전부** 당근 [SEED Design](https://seed-design.io)이다. shadcn/ui는 컴포넌트도 토큰도 남아 있지 않다.
 
-- **신규 UI는 SEED 컴포넌트 우선**. 대응 컴포넌트가 없으면 기존 `src/components/ui/`(shadcn)를 쓴다
-- **한 컴포넌트 안에서 두 체계를 섞지 말 것** — SEED 스니펫에는 SEED 토큰(`bg-bg-*`, `text-fg-*`, `border-stroke-*`), shadcn 컴포넌트에는 shadcn 토큰(`bg-primary`, `text-muted-foreground`)
-- SEED 토큰 유틸리티: 색상 `bg-bg-brand-solid`/`text-fg-neutral`/`bg-palette-blue-500`, 타이포 `t4-bold`/`screen-title`, 간격 `p-x3`/`gap-x4`/`size-x6`, 반경 `rounded-r2`
-- 컴포넌트 추가: `cd frontend && npx @seed-design/cli@latest add ui:<name>` → `src/seed-design/ui/`에 스니펫 설치, `import { X } from 'seed-design/ui/<name>'`로 사용
-- 문서 조회: `npx @seed-design/cli@latest docs <name>` / 상세 가이드는 `seed-design` 스킬 로드
-- 색상 모드는 **`dark-only` 고정** (`frontend/vite.config.ts`의 `seedDesignPlugin`) — 앱 전체가 다크 전용이다
+### 규칙
+
+- **색·간격·곡률·타이포는 SEED 스케일만 쓴다.** Tailwind 기본 팔레트(`text-rose-400`)와 shadcn 토큰(`bg-primary`)은 금지 — 이 저장소에 0건이다
+  - 색: `bg-bg-layer-default` `text-fg-neutral` `text-fg-neutral-muted` `text-fg-critical` `text-fg-positive` `border-stroke-neutral-weak` `bg-bg-brand-solid`
+  - 간격: `p-x4` `gap-x3` `mt-x2` (SEED `dimension.x*` = Tailwind와 같은 4px 기반이라 숫자가 그대로 대응한다)
+  - 반경: `rounded-r2`(8px) `rounded-r1_5`(6px) `rounded-full`
+  - 타이포: `screen-title` `t5-bold` `t4-regular` `t2-regular` `article-body` (크기+굵기가 한 클래스에 묶여 있다 — `text-sm font-medium`처럼 쪼개 쓰지 않는다)
+- **세로 간격은 `space-y-*`가 아니라 `flex flex-col gap-x*`로 잡는다.** SEED는 `p-*`/`gap-*`/`m-*`/`w-*`는 `@utility`로 재정의하지만 `space-y-*`는 손대지 않아 `space-y-x6`가 동작하지 않는다. 목록처럼 flex를 못 쓰는 자리에서는 `space-y-(--dimension-x1)`로 토큰을 직접 참조한다
+  - (Tailwind 기본 스케일 `p-4`도 여전히 동작한다 — 커스텀 `@utility`가 값을 못 찾으면 내장으로 폴백한다. 금지하는 이유는 기능이 아니라 일관성이다)
+- **컨테이너 폭·높이는 예외.** SEED dimension 스케일은 64px(`x16`)에서 끝나므로 `w-40` 같은 레이아웃 치수는 Tailwind 스케일을 쓴다
+- 아이콘은 `@karrotmarket/react-monochrome-icon`. 버튼 안에서는 `Icon`(iconOnly) / `PrefixIcon` / `SuffixIcon` 슬롯을 쓴다
+- 색상 모드는 **`dark-only` 고정** (`frontend/vite.config.ts`의 `seedDesignPlugin`)
 - CSS cascade layer 순서(`theme, base, seed-base, components, seed-components, utilities`)를 `frontend/index.html`과 `frontend/src/index.css` 양쪽에 선언해 Tailwind 유틸리티가 SEED 컴포넌트 스타일을 덮어쓸 수 있게 했다. **이 순서를 바꾸지 말 것**
+
+### SEED에 대응이 없어 직접 유지하는 것 (`src/components/ui/`)
+
+SEED는 모바일 앱 디자인 시스템이라 웹 대시보드 관용구가 없다. 아래 4개가 전부이고, 내부는 SEED 토큰·컴포넌트로만 짠다.
+
+| 파일 | 이유 |
+| --- | --- |
+| `table.tsx` | SEED에 표 컴포넌트가 없다. 정렬·페이지네이션은 `@tanstack/react-table`이 담당 |
+| `Surface.tsx` | 카드 표면. `rounded-r2 + bg-bg-layer-default + border-stroke-neutral-weak` 조합을 한곳에 모은 것 |
+| `DateField.tsx` | SEED DatePicker는 트리거 없는 인라인 달력 — FieldButton + Dialog로 감쌌다 |
+| `MonthField.tsx` | SEED에 월 단위 선택이 없다. DateField와 같은 뼈대에 12개월 그리드 |
+
+날짜 값은 앱 전역에서 `'YYYY-MM-DD'` 문자열이고, SEED가 쓰는 `{year, month, day}` 변환은 `lib/format.ts`의 `toCalendarDate`/`fromCalendarDate`가 경계에서만 처리한다.
+
+차트(echarts)는 canvas라 CSS를 상속하지 않는다 — `lib/chartTheme.ts`가 SEED CSS 변수를 런타임에 읽어 팔레트·축·툴팁 색을 만든다. **차트에 색을 하드코딩하지 말 것.**
+
+### 작업 방법
+
+- 컴포넌트 추가: `cd frontend && npx @seed-design/cli@latest add ui:<name>` → `src/seed-design/ui/`에 스니펫 설치, `import { X } from 'seed-design/ui/<name>'`로 사용
+- 문서 조회: `npx @seed-design/cli@latest docs <name>` / 상세 가이드는 `seed-design` 스킬 로드 / `seed-docs` MCP 서버도 등록돼 있다
+- `src/seed-design/`은 CLI가 덮어쓰는 생성 코드다. 손대지 말고 필요하면 감싸는 컴포넌트를 따로 만든다
 
 ## 모바일 대응 (UI 필수 제약)
 

@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react'
 import * as echarts from 'echarts'
 import type { EChartsOption } from 'echarts'
 
+import { chartColors, chartPalette } from '@/lib/chartTheme'
+
 interface EChartProps {
   option: EChartsOption
   height?: number
@@ -28,6 +30,40 @@ function chartFontFamily(): string {
   return cachedFontFamily
 }
 
+const SEED_THEME_NAME = 'seed'
+
+/**
+ * SEED 토큰으로 만든 echarts 테마.
+ * 시리즈 색·축·라벨·툴팁을 한곳에서 정하고, 각 차트 옵션은 데이터만 신경 쓰게 한다.
+ */
+function seedTheme() {
+  const text = chartColors.text()
+  const muted = chartColors.textMuted()
+  const line = chartColors.line()
+  const axis = {
+    axisLine: { lineStyle: { color: line } },
+    axisTick: { lineStyle: { color: line } },
+    axisLabel: { color: muted },
+    splitLine: { lineStyle: { color: line } },
+  }
+  return {
+    color: chartPalette(),
+    backgroundColor: 'transparent',
+    textStyle: { color: text, fontFamily: chartFontFamily() },
+    title: { textStyle: { color: text }, subtextStyle: { color: muted } },
+    legend: { textStyle: { color: muted } },
+    tooltip: {
+      backgroundColor: chartColors.floating(),
+      borderColor: line,
+      textStyle: { color: text },
+    },
+    categoryAxis: axis,
+    valueAxis: axis,
+    timeAxis: axis,
+    logAxis: axis,
+  }
+}
+
 /**
  * Apache ECharts 직접 래핑 컴포넌트.
  * echarts-for-react 대신 useRef/useEffect로 라이프사이클을 직접 관리한다
@@ -45,7 +81,10 @@ export function EChart({ option, height = 300, className, onClick }: EChartProps
 
   useEffect(() => {
     if (!containerRef.current) return
-    const chart = echarts.init(containerRef.current, 'dark')
+    // echarts 내장 'dark' 테마 대신 SEED 토큰으로 만든 테마를 등록해 쓴다 —
+    // 내장 테마는 자체 팔레트/배경색을 들고 있어 앱 색과 따로 논다
+    echarts.registerTheme(SEED_THEME_NAME, seedTheme())
+    const chart = echarts.init(containerRef.current, SEED_THEME_NAME)
     chartRef.current = chart
     chart.on('click', (params) => onClickRef.current?.(params))
     const observer = new ResizeObserver(() => chart.resize())
@@ -65,10 +104,8 @@ export function EChart({ option, height = 300, className, onClick }: EChartProps
   }, [])
 
   useEffect(() => {
-    chartRef.current?.setOption(
-      { backgroundColor: 'transparent', textStyle: { fontFamily: chartFontFamily() }, ...option },
-      true,
-    )
+    // 배경·글꼴은 seedTheme이 이미 정하므로 옵션에서 다시 지정하지 않는다
+    chartRef.current?.setOption(option, true)
   }, [option])
 
   // contain: inline-size — echarts가 canvas에 박는 인라인 px 폭이 조상 flex/grid의

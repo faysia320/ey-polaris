@@ -25,6 +25,7 @@ import { MemberFilterSelect } from "@/components/members/MemberFilterSelect";
 import { DateField } from "@/components/ui/DateField";
 import { Surface } from "@/components/ui/Surface";
 import { api } from "@/lib/api";
+import { chartPalette } from "@/lib/chartTheme";
 import { formatKRW, todayISO } from "@/lib/format";
 import { useAnalyticsStore } from "@/stores/analytics";
 import { useGoalStore } from "@/stores/goals";
@@ -162,8 +163,9 @@ export function AssetsPage() {
           smooth: true,
           symbolSize: 6,
           areaStyle: { opacity: 0.15 },
-          lineStyle: { width: 2, color: "#fde047" },
-          itemStyle: { color: "#fde047" },
+          // 총자산 추이는 단일 시리즈라 팔레트 첫 색을 명시적으로 쓴다
+          lineStyle: { width: 2, color: chartPalette()[0] },
+          itemStyle: { color: chartPalette()[0] },
           data: trend.map((p) => p.total),
         },
       ],

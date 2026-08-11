@@ -10,37 +10,13 @@ import { MarkdownView } from '@/components/MarkdownView'
 import { MemberFilterSelect } from '@/components/members/MemberFilterSelect'
 import { Surface } from '@/components/ui/Surface'
 import { api } from '@/lib/api'
+import { chartColors, chartPalette, labelColorOn } from '@/lib/chartTheme'
 import { addMonths, previousMonth, formatKRW } from '@/lib/format'
 import { useAIReportStore } from '@/stores/aiReport'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { useMemberFilterStore } from '@/stores/memberFilter'
 import type { Transaction } from '@/types'
 
-// ECharts 테마 빌더의 dark 테마 팔레트 — 다크 배경에서 채도를 낮춘 중간 톤이라
-// 기본 dark 테마의 고채도 팔레트보다 라벨 대비가 안정적이다
-const CHART_PALETTE = [
-  '#dd6b66',
-  '#759aa0',
-  '#e69d87',
-  '#8dc1a9',
-  '#ea7e53',
-  '#eedd78',
-  '#73a373',
-  '#73b9bc',
-  '#7289ab',
-  '#91ca8c',
-  '#f49f42',
-]
-
-/** 블록 배경색의 휘도에 따라 어두운/밝은 라벨색을 골라 대비를 확보한다. */
-function labelColorFor(hex: string): string {
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  // 임계 0.5 — 0.6이면 중간 톤(#73a373 등)에 밝은 라벨이 배정돼 WCAG AA 미달
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-  return luminance > 0.5 ? '#1f2329' : '#eeeeee'
-}
 
 interface CategoryDetail {
   major: string
@@ -79,14 +55,17 @@ export function DashboardPage() {
     generateReport(month).catch((e: Error) => setReportError(e.message))
   }
 
+  // chartPalette()는 CSS 변수를 1회 읽고 같은 배열을 캐시해 돌려주므로 참조가 안정적이다
+  const palette = chartPalette()
+
   // 트리맵·스택바·범례가 같은 대분류명에 같은 색을 쓰도록 이름 기준으로 배색
   const colorByName = useMemo(() => {
     const names = (dashboard?.expense_by_category ?? []).map((d) => d.category_name)
     for (const b of dashboard?.budgets ?? []) {
       if (!names.includes(b.major)) names.push(b.major)
     }
-    return new Map(names.map((n, i) => [n, CHART_PALETTE[i % CHART_PALETTE.length]]))
-  }, [dashboard])
+    return new Map(names.map((n, i) => [n, palette[i % palette.length]]))
+  }, [dashboard, palette])
 
   const treemapOption = useMemo<EChartsOption>(() => {
     const data = dashboard?.expense_by_category ?? []
@@ -105,16 +84,21 @@ export function DashboardPage() {
           roam: false,
           nodeClick: false,
           breadcrumb: { show: false },
-          itemStyle: { borderRadius: 6, borderColor: '#171717', borderWidth: 2, gapWidth: 2 },
+          itemStyle: {
+            borderRadius: 6,
+            borderColor: chartColors.surface(),
+            borderWidth: 2,
+            gapWidth: 2,
+          },
           label: { fontSize: 13, fontWeight: 500 },
           data: data.map((d) => {
-            const color = colorByName.get(d.category_name) ?? CHART_PALETTE[0]
+            const color = colorByName.get(d.category_name) ?? palette[0]
             return {
               name: d.category_name,
               value: d.amount,
               itemStyle: { color },
               label: {
-                color: labelColorFor(color),
+                color: labelColorOn(color),
                 formatter: () => `${d.category_name}\n${formatKRW(d.amount)}`,
               },
             }
@@ -122,7 +106,7 @@ export function DashboardPage() {
         },
       ],
     }
-  }, [dashboard, colorByName])
+  }, [dashboard, colorByName, palette])
 
   // 세부 내역 요청 시퀀스 — 연속 클릭·로딩 중 닫기에서 stale 응답이
   // 최신 상태를 덮어쓰거나 닫힌 Dialog를 다시 열지 않도록 가드한다
@@ -243,7 +227,7 @@ export function DashboardPage() {
                 className="h-full"
                 style={{
                   width: stackDenom > 0 ? `${(b.spent / stackDenom) * 100}%` : '0%',
-                  backgroundColor: colorByName.get(b.major) ?? CHART_PALETTE[0],
+                  backgroundColor: colorByName.get(b.major) ?? palette[0],
                 }}
               />
             ))}
@@ -259,7 +243,7 @@ export function DashboardPage() {
                     <span
                       className="size-x2 shrink-0 rounded-full"
                       style={{
-                        backgroundColor: colorByName.get(b.major) ?? CHART_PALETTE[0],
+                        backgroundColor: colorByName.get(b.major) ?? palette[0],
                       }}
                     />
                     <span className="truncate">{b.major}</span>
