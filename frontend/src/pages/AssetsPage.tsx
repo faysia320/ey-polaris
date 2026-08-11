@@ -32,6 +32,7 @@ import { Surface } from "@/components/ui/Surface";
 import { api } from "@/lib/api";
 import { chartPalette } from "@/lib/chartTheme";
 import { formatKRW, todayISO } from "@/lib/format";
+import { panelBodyScroll } from "@/lib/utils";
 import { useAnalyticsStore } from "@/stores/analytics";
 import { useGoalStore } from "@/stores/goals";
 import { useMasterDataStore } from "@/stores/masterData";
@@ -541,7 +542,7 @@ export function AssetsPage() {
               : "기준일의 평가액을 기록해요. 같은 날짜에 다시 기록하면 값이 갱신돼요."
           }
         >
-          <ResponsiveSidePanelBody>
+          <ResponsiveSidePanelBody className={panelBodyScroll}>
             <div className="flex flex-col gap-x4">
               <DateField
                 label="기준일"
@@ -690,7 +691,7 @@ export function AssetsPage() {
           title={editingGoal ? "목표 수정" : "목표 추가"}
           description="달성률은 가구 전체 총자산(부부 공동) 기준으로 계산돼요."
         >
-          <ResponsiveSidePanelBody>
+          <ResponsiveSidePanelBody className={panelBodyScroll}>
             <div className="flex flex-col gap-x4">
               <TextField size="responsive"
                 label="목표 이름"

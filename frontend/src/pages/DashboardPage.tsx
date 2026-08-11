@@ -16,6 +16,7 @@ import { Surface } from '@/components/ui/Surface'
 import { api } from '@/lib/api'
 import { chartColors, chartPalette, labelColorOn } from '@/lib/chartTheme'
 import { addMonths, previousMonth, formatKRW } from '@/lib/format'
+import { panelBodyScroll } from '@/lib/utils'
 import { useAIReportStore } from '@/stores/aiReport'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { useMemberFilterStore } from '@/stores/memberFilter'
@@ -282,7 +283,7 @@ export function DashboardPage() {
           title={`${detail?.major ?? ''} 지출 내역`}
           description={`${month} · ${detail?.items.length ?? 0}건 · 합계 ${formatKRW(detailTotal)}`}
         >
-          <ResponsiveSidePanelBody>
+          <ResponsiveSidePanelBody className={panelBodyScroll}>
             {detail?.loading && (
               <p className="t4-regular py-x8 text-center text-fg-neutral-muted">불러오는 중...</p>
             )}

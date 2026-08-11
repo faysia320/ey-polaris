@@ -72,7 +72,7 @@ import {
   KIND_LABEL,
   todayISO,
 } from '@/lib/format'
-import { cn, touchTarget } from '@/lib/utils'
+import { cn, touchTarget, panelBodyScroll } from '@/lib/utils'
 import { useMasterDataStore } from '@/stores/masterData'
 import { useMemberFilterStore } from '@/stores/memberFilter'
 import { useTransactionStore } from '@/stores/transactions'
@@ -1403,7 +1403,7 @@ export function TransactionsPage() {
           description={editing ? '거래 내용을 수정합니다.' : '새 지출/수입/이체 거래를 기록합니다.'}
         >
           {/* 필드가 많아 짧은 뷰포트에서 넘친다 — DialogBody가 자체적으로 본문만 스크롤시킨다 */}
-          <ResponsiveSidePanelBody>
+          <ResponsiveSidePanelBody className={panelBodyScroll}>
             <div className="flex flex-col gap-x4">
               <div className="grid grid-cols-2 gap-x3">
                 <DateField
@@ -1630,7 +1630,7 @@ export function TransactionsPage() {
                     : '뱅크샐러드 내보내기 파일의 "가계부 내역"에서 선택한 달만 가져옵니다.'
           }
         >
-          <ResponsiveSidePanelBody>
+          <ResponsiveSidePanelBody className={panelBodyScroll}>
           {importResult ? (
             <div className="space-y-(--dimension-x3) t4-regular">
               <p>
@@ -2086,7 +2086,7 @@ export function TransactionsPage() {
           title="연결할 거래 선택"
           description="현재 목록에서 묶을 상대 거래를 골라 하나의 묶음으로 연결해요. 원본은 그대로 남고 통계에만 반영돼요."
         >
-          <ResponsiveSidePanelBody>
+          <ResponsiveSidePanelBody className={panelBodyScroll}>
             <div className="space-y-(--dimension-x3) t4-regular">
               {linkSource && (
                 <div className="space-y-(--dimension-x1) rounded-r1_5 border p-x2 t2-regular">
@@ -2218,7 +2218,7 @@ export function TransactionsPage() {
           title="묶음 보기"
           description={`${viewTx?.link_type ? LINK_LABEL[viewTx.link_type] : '묶음'}으로 연결된 두 거래예요. 해제하면 각각 개별 거래로 돌아가요.`}
         >
-          <ResponsiveSidePanelBody>
+          <ResponsiveSidePanelBody className={panelBodyScroll}>
           {viewTx &&
             isBundle(viewTx) &&
             (() => {

@@ -34,6 +34,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { ACCOUNT_TYPES, accountTypeLabel, formatKRW, KIND_LABEL } from '@/lib/format'
+import { panelBodyScroll } from '@/lib/utils'
 import { useAISettingsStore } from '@/stores/aiSettings'
 import { useMasterDataStore } from '@/stores/masterData'
 import type { Account, AccountType, Category, CategoryNature, Member, TransactionKind } from '@/types'
@@ -199,7 +200,7 @@ function CategoriesTab() {
 
         <ResponsiveSidePanelRoot open={open} onOpenChange={setOpen}>
         <ResponsiveSidePanelContent title={editing ? '카테고리 수정' : '카테고리 추가'}>
-          <ResponsiveSidePanelBody>
+          <ResponsiveSidePanelBody className={panelBodyScroll}>
             <div className="flex flex-col gap-x4">
               <TextField size="responsive" label="대분류" value={major} onValueChange={({ value }) => setMajor(value)}>
                 <TextFieldInput list="cat-major-options" placeholder="예: 식비" />
@@ -400,7 +401,7 @@ function AccountsTab() {
 
         <ResponsiveSidePanelRoot open={open} onOpenChange={setOpen}>
         <ResponsiveSidePanelContent title={editing ? '계정 수정' : '계정 추가'}>
-          <ResponsiveSidePanelBody>
+          <ResponsiveSidePanelBody className={panelBodyScroll}>
             <div className="flex flex-col gap-x4">
               <TextField size="responsive" label="이름" value={name} onValueChange={({ value }) => setName(value)}>
                 <TextFieldInput />
@@ -575,7 +576,7 @@ function MembersTab() {
 
         <ResponsiveSidePanelRoot open={open} onOpenChange={setOpen}>
         <ResponsiveSidePanelContent title={editing ? '구성원 수정' : '구성원 추가'}>
-          <ResponsiveSidePanelBody>
+          <ResponsiveSidePanelBody className={panelBodyScroll}>
             <div className="flex flex-col gap-x4">
               <TextField size="responsive" label="이름" value={name} onValueChange={({ value }) => setName(value)}>
                 <TextFieldInput />
