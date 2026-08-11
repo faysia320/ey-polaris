@@ -2,6 +2,10 @@
 <html lang="ko" class="dark">
   <head>
     <meta charset="UTF-8" />
+    <!-- CSS cascade layer 순서 — index.css에도 같은 선언이 있지만, 빌드에서 CSS가 여러
+         청크로 쪼개지면 seed-components 블록이 먼저 로드돼 순서가 뒤집힐 수 있다.
+         모든 <link rel="stylesheet">보다 앞선 이 인라인 선언이 순서를 확정한다. -->
+    <style>@layer theme, base, seed-base, components, seed-components, utilities;</style>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>으니영이의 북극성</title>

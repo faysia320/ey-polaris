@@ -2,7 +2,9 @@
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      /* seed-design.json의 path와 같아야 한다 — CLI가 스니펫을 여기에 설치한다 */
+      "seed-design/*": ["./src/seed-design/*"]
     },
     "target": "es2023",
     "lib": ["ES2023", "DOM"],

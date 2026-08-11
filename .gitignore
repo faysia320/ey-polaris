@@ -1,6 +1,12 @@
 # Claude Code 로컬 전용 설정 (개인 권한 설정 — 커밋 금지)
 .claude/settings.local.json
 
+# `npx skills add`가 만드는 에이전트 공용 스킬 저장소.
+# .claude/skills/<name>이 이곳을 가리키는 심볼릭 링크인데 core.symlinks=false인 환경에서는
+# git이 링크를 실제 파일로 풀어 담아 같은 내용이 두 벌 커밋된다.
+# 커밋 대상은 .claude/skills/ 한 곳으로 두고, 재설치는 skills-lock.json으로 복원한다.
+.agents/
+
 # Node / Frontend
 node_modules/
 frontend/dist/

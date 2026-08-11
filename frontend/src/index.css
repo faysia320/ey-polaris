@@ -1,6 +1,18 @@
+/* SEED와 Tailwind의 cascade layer 우선순위를 먼저 못박는다.
+   utilities가 seed-components보다 뒤에 와야 Tailwind 유틸리티 클래스로
+   SEED 컴포넌트 스타일을 덮어쓸 수 있다. 선언만 하는 @layer 문이라
+   @import보다 앞에 와도 CSS 문법상 유효하다.
+   빌드에서 CSS가 여러 청크로 쪼개질 때를 대비해 index.html에도 같은 선언을 인라인해 둔다. */
+@layer theme, base, seed-base, components, seed-components, utilities;
+
+/* base.css(unlayered)가 아니라 layered 판을 쓴다 — vite.config.ts의 `seed-layered` condition과 짝. */
+@import "@seed-design/css/base.layered.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+/* SEED 토큰을 Tailwind 유틸리티로 노출한다 (bg-bg-brand-solid, text-fg-neutral, p-x3, rounded-r2, t4-bold 등).
+   tailwindcss 뒤에 와야 @theme/@utility가 Tailwind 엔진에 등록된다. */
+@import "@seed-design/tailwind4-theme";
 
 @custom-variant dark (&:is(.dark *));
 

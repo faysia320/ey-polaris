@@ -18,6 +18,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - backend 로컬 실행: `cd backend && uvicorn app.main:app --reload` (DB 필요 — `DATABASE_URL` 환경변수 참조: `backend/app/config.py`)
 - DB 마이그레이션: `cd backend && alembic upgrade head` / 생성: `alembic revision --autogenerate -m "..."`
 
+## 디자인 시스템 (SEED Design)
+
+당근 [SEED Design](https://seed-design.io)을 도입했다. 기존 shadcn/ui와 **병존**한다 — SEED 파운데이션만 얹었고 shadcn CSS 변수(`--primary`, `--background` 등)는 SEED로 재매핑하지 않았다.
+
+- **신규 UI는 SEED 컴포넌트 우선**. 대응 컴포넌트가 없으면 기존 `src/components/ui/`(shadcn)를 쓴다
+- **한 컴포넌트 안에서 두 체계를 섞지 말 것** — SEED 스니펫에는 SEED 토큰(`bg-bg-*`, `text-fg-*`, `border-stroke-*`), shadcn 컴포넌트에는 shadcn 토큰(`bg-primary`, `text-muted-foreground`)
+- SEED 토큰 유틸리티: 색상 `bg-bg-brand-solid`/`text-fg-neutral`/`bg-palette-blue-500`, 타이포 `t4-bold`/`screen-title`, 간격 `p-x3`/`gap-x4`/`size-x6`, 반경 `rounded-r2`
+- 컴포넌트 추가: `cd frontend && npx @seed-design/cli@latest add ui:<name>` → `src/seed-design/ui/`에 스니펫 설치, `import { X } from 'seed-design/ui/<name>'`로 사용
+- 문서 조회: `npx @seed-design/cli@latest docs <name>` / 상세 가이드는 `seed-design` 스킬 로드
+- 색상 모드는 **`dark-only` 고정** (`frontend/vite.config.ts`의 `seedDesignPlugin`) — 앱 전체가 다크 전용이다
+- CSS cascade layer 순서(`theme, base, seed-base, components, seed-components, utilities`)를 `frontend/index.html`과 `frontend/src/index.css` 양쪽에 선언해 Tailwind 유틸리티가 SEED 컴포넌트 스타일을 덮어쓸 수 있게 했다. **이 순서를 바꾸지 말 것**
+
 ## 모바일 대응 (UI 필수 제약)
 
 **모든 UI 변경은 모바일 뷰포트에서도 깨지지 않아야 한다.** 이 앱은 모바일 사용을 전제로 한다.
