@@ -32,7 +32,10 @@ UI는 **전부** 당근 [SEED Design](https://seed-design.io)이다. shadcn/ui�
 - **세로 간격은 `space-y-*`가 아니라 `flex flex-col gap-x*`로 잡는다.** SEED는 `p-*`/`gap-*`/`m-*`/`w-*`는 `@utility`로 재정의하지만 `space-y-*`는 손대지 않아 `space-y-x6`가 동작하지 않는다. 목록처럼 flex를 못 쓰는 자리에서는 `space-y-(--dimension-x1)`로 토큰을 직접 참조한다
   - (Tailwind 기본 스케일 `p-4`도 여전히 동작한다 — 커스텀 `@utility`가 값을 못 찾으면 내장으로 폴백한다. 금지하는 이유는 기능이 아니라 일관성이다)
 - **컨테이너 폭·높이는 예외.** SEED dimension 스케일은 64px(`x16`)에서 끝나므로 `w-40` 같은 레이아웃 치수는 Tailwind 스케일을 쓴다
+- **툴바 높이 사다리.** 필드와 ActionButton은 같은 스케일을 쓴다 — large 52px(x13) / medium 40px(x10) / small 36px(x9) / xsmall 32px(x8). 위계는 **툴바(필드 옆) = `useFieldSize()` > 행 액션 = `small` > 인라인 칩 = `xsmall`**
 - **입력 컴포넌트(`TextField`/`SelectRoot`/`FieldButton`)에는 항상 `size="responsive"`를 준다.** 기본값 `large`(52px, 터치 기준)는 데스크톱 표에서 지나치게 두툼하고, 일부만 responsive면 `lg`(1280px) 경계에서 필드 높이가 갈린다. responsive = 1280px 미만 `large` / 이상 `medium`(40px)
+- **필드와 같은 줄에 서는 ActionButton은 `size={useFieldSize()}`.** ActionButton에는 `responsive`가 없어, 필드만 responsive로 두면 같은 줄에서 52px 필드와 36px 버튼이 어긋난다 (`lib/useFieldSize.ts`)
+- **페이지 뼈대는 세 덩어리로 고정한다.** ① 제목 줄(무엇을 보는가 — 월 이동·구성원 필터·뷰 전환) ② 액션 줄(데이터를 바꾸는 조작 — 모바일 `grid`로 균등 분할, sm 이상 `flex justify-end`) ③ 필터는 `Surface` 안 그리드(`grid-cols-2 sm:grid-cols-3 xl:grid-cols-4`). **필터에 고정 px 폭(`w-40` 등)을 주지 말 것** — 폭이 어긋나 열이 들쭉날쭉 접힌다
 - 아이콘은 `@karrotmarket/react-monochrome-icon`. 버튼 안에서는 `Icon`(iconOnly) / `PrefixIcon` / `SuffixIcon` 슬롯을 쓴다
 - 색상 모드는 **`dark-only` 고정** (`frontend/vite.config.ts`의 `seedDesignPlugin`)
 - CSS cascade layer 순서(`theme, base, seed-base, components, seed-components, utilities`)를 `frontend/index.html`과 `frontend/src/index.css` 양쪽에 선언해 Tailwind 유틸리티가 SEED 컴포넌트 스타일을 덮어쓸 수 있게 했다. **이 순서를 바꾸지 말 것**

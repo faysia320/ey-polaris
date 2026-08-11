@@ -345,7 +345,7 @@ function AccountsTab() {
 
   return (
     <div className="flex flex-col gap-x4">
-      <div className="flex justify-end">
+      <div className="grid grid-cols-1 sm:flex sm:justify-end">
         <ActionButton variant="neutralSolid" size="small" onClick={openCreate}>
           <PrefixIcon svg={<IconPlusLine />} />
           계정 추가
@@ -533,7 +533,7 @@ function MembersTab() {
 
   return (
     <div className="flex flex-col gap-x4">
-      <div className="flex justify-end">
+      <div className="grid grid-cols-1 sm:flex sm:justify-end">
         <ActionButton variant="neutralSolid" size="small" onClick={openCreate}>
           <PrefixIcon svg={<IconPlusLine />} />
           구성원 추가

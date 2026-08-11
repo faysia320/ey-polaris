@@ -373,7 +373,7 @@ export function AssetsPage() {
 
   return (
     <div className="flex flex-col gap-x6">
-      <div className="flex items-center justify-between gap-x2">
+      <div className="flex flex-wrap items-center justify-between gap-x3">
         <h1 className="screen-title">자산 상태</h1>
         <MemberFilterSelect />
       </div>

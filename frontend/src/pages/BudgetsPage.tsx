@@ -28,6 +28,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { addMonths, formatKRW, formatNumber } from '@/lib/format'
+import { useFieldSize } from '@/lib/useFieldSize'
 import { useBudgetStore } from '@/stores/budgets'
 import { useMasterDataStore } from '@/stores/masterData'
 
@@ -39,6 +40,8 @@ const QUICK_AMOUNTS = [
 ]
 
 export function BudgetsPage() {
+  // 월 이동·전월 복사를 앱 전체의 툴바 높이 사다리에 맞춘다
+  const fieldSize = useFieldSize()
   const { month, items, fetch, save, remove, copyFromPrevMonth } = useBudgetStore()
   const { categories, loaded, fetchAll } = useMasterDataStore()
   const [drafts, setDrafts] = useState<Record<string, string>>({})
@@ -124,12 +127,13 @@ export function BudgetsPage() {
 
   return (
     <div className="flex flex-col gap-x6">
-      <div className="flex items-center justify-between">
+      {/* 제목 줄 — 월 이동은 "무엇을 보는가"라서 제목과 함께 둔다 */}
+      <div className="flex flex-wrap items-center justify-between gap-x3">
         <h1 className="screen-title">예산 설정</h1>
         <div className="flex items-center gap-x2">
           <ActionButton
             variant="neutralOutline"
-            size="small"
+            size={fieldSize}
             layout="iconOnly"
             aria-label="이전 달"
             onClick={() => changeMonth(-1)}
@@ -139,7 +143,7 @@ export function BudgetsPage() {
           <span className="t4-medium w-24 shrink-0 whitespace-nowrap text-center tabular-nums">{month}</span>
           <ActionButton
             variant="neutralOutline"
-            size="small"
+            size={fieldSize}
             layout="iconOnly"
             aria-label="다음 달"
             onClick={() => changeMonth(1)}
@@ -149,8 +153,9 @@ export function BudgetsPage() {
         </div>
       </div>
 
-      <div className="flex justify-end">
-        <ActionButton variant="neutralOutline" size="small" onClick={handleCopyClick}>
+      {/* 액션 줄 — 다른 화면과 같은 규칙: 모바일은 전체 폭, sm 이상은 내용 폭으로 우측 정렬 */}
+      <div className="grid grid-cols-1 sm:flex sm:justify-end">
+        <ActionButton variant="neutralOutline" size={fieldSize} onClick={handleCopyClick}>
           <PrefixIcon svg={<IconSquare2StackedLine />} />
           전월 복사
         </ActionButton>

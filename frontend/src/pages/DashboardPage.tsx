@@ -15,6 +15,7 @@ import { MemberFilterSelect } from '@/components/members/MemberFilterSelect'
 import { Surface } from '@/components/ui/Surface'
 import { api } from '@/lib/api'
 import { chartColors, chartPalette, labelColorOn } from '@/lib/chartTheme'
+import { useFieldSize } from '@/lib/useFieldSize'
 import { addMonths, previousMonth, formatKRW } from '@/lib/format'
 import { panelBodyScroll } from '@/lib/utils'
 import { useAIReportStore } from '@/stores/aiReport'
@@ -31,6 +32,8 @@ interface CategoryDetail {
 }
 
 export function DashboardPage() {
+  // 월 이동 버튼을 옆에 선 구성원 필터와 같은 높이 사다리에 태운다
+  const fieldSize = useFieldSize()
   const [month, setMonth] = useState(previousMonth())
   const { dashboard, fetchDashboard } = useAnalyticsStore()
   const memberId = useMemberFilterStore((s) => s.memberId)
@@ -155,12 +158,12 @@ export function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-x6">
-      <div className="flex flex-wrap items-center justify-between gap-y-x3">
+      <div className="flex flex-wrap items-center justify-between gap-x3">
         <h1 className="screen-title">대시보드</h1>
         <div className="flex items-center gap-x2">
           <ActionButton
             variant="neutralOutline"
-            size="small"
+            size={fieldSize}
             layout="iconOnly"
             aria-label="이전 달"
             onClick={() => setMonth(addMonths(month, -1))}
@@ -170,7 +173,7 @@ export function DashboardPage() {
           <span className="t4-medium w-24 shrink-0 whitespace-nowrap text-center tabular-nums">{month}</span>
           <ActionButton
             variant="neutralOutline"
-            size="small"
+            size={fieldSize}
             layout="iconOnly"
             aria-label="다음 달"
             onClick={() => setMonth(addMonths(month, 1))}

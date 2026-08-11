@@ -47,6 +47,7 @@ import {
 import { SegmentedControl, SegmentedControlItem } from 'seed-design/ui/segmented-control'
 import { TextField, TextFieldInput } from 'seed-design/ui/text-field'
 
+import { Surface } from '@/components/ui/Surface'
 import { DateField } from '@/components/ui/DateField'
 import { TimeField } from '@/components/ui/TimeField'
 import { MonthField } from '@/components/ui/MonthField'
@@ -73,6 +74,7 @@ import {
   todayISO,
 } from '@/lib/format'
 import { cn, touchTarget, panelBodyScroll } from '@/lib/utils'
+import { useFieldSize } from '@/lib/useFieldSize'
 import { useMasterDataStore } from '@/stores/masterData'
 import { useMemberFilterStore } from '@/stores/memberFilter'
 import { useTransactionStore } from '@/stores/transactions'
@@ -265,6 +267,8 @@ const accountText = (t: Transaction) => {
 }
 
 export function TransactionsPage() {
+  // 툴바 버튼을 옆에 선 필드(Select·MonthField)와 같은 높이 사다리에 태운다
+  const fieldSize = useFieldSize()
   const { items, filters, fetch, setFilters, create, update, remove, removeMonth, link, unlink } =
     useTransactionStore()
   const { categories, accounts, members, loaded, fetchAll } = useMasterDataStore()
@@ -1002,47 +1006,63 @@ export function TransactionsPage() {
 
   return (
     <div className="flex flex-col gap-x6">
-      {/* 모바일: 제목/액션 세로 적층 + 액션 줄바꿈 허용 (한 줄 강제 시 375px에서 가로 스크롤) */}
-      <div className="flex flex-col gap-x3 sm:flex-row sm:items-center sm:justify-between">
+      {/* 제목 줄 — 구성원 필터와 뷰 전환은 "무엇을 보는가"라서 제목과 함께 둔다.
+          둘 다 필드 높이(52/40)라 한 줄에서 높이가 맞는다 */}
+      <div className="flex flex-col gap-x3 lg:flex-row lg:items-center lg:justify-between">
         <h1 className="screen-title shrink-0 whitespace-nowrap">지출/수입 내역</h1>
-        <div className="flex flex-wrap items-center gap-x2">
+        <div className="flex items-center gap-x2">
           <MemberFilterSelect />
-          {/* 표/캘린더 전환 — 상호배타 뷰 전환은 SEED에서 SegmentedControl의 역할이다 */}
+          {/* 표/캘린더 전환 — 상호배타 뷰 전환은 SEED에서 SegmentedControl의 역할이다.
+              모바일에서는 남는 폭을 채워 두 탭이 균등하게 나뉜다 */}
           <SegmentedControl
             aria-label="보기 전환"
+            className="min-w-0 flex-1 lg:flex-none"
             value={view}
             onValueChange={(v) => switchView(v as 'table' | 'calendar')}
           >
             <SegmentedControlItem value="table">테이블</SegmentedControlItem>
             <SegmentedControlItem value="calendar">캘린더</SegmentedControlItem>
           </SegmentedControl>
-          <ActionButton variant="neutralOutline" size="small" onClick={openImport}>
-            <PrefixIcon svg={<IconArrowUpBracketDownLine />} />
-            엑셀 업로드
-          </ActionButton>
-          {/* 월 미선택(전체 기간)이면 전체 삭제 사고를 막기 위해 비활성 */}
-          <ActionButton
-            variant="neutralOutline"
-            size="small"
-            className="text-fg-critical"
-            disabled={!filters.month || items.length === 0}
-            title={filters.month ? undefined : '삭제할 월을 먼저 선택해주세요'}
-            onClick={openBulkDelete}
-          >
-            <PrefixIcon svg={<IconTrashcanLine />} />월 전체 삭제
-          </ActionButton>
-          <ActionButton variant="neutralSolid" size="small" onClick={openCreate}>
-            <PrefixIcon svg={<IconPlusLine />} />
-            거래 추가
-          </ActionButton>
         </div>
+      </div>
+
+      {/* 액션 줄 — 데이터를 바꾸는 조작만 모았다. 모바일에서는 균등 분할해 폭을 맞추고,
+          lg 이상에서는 내용 폭으로 줄여 우측 정렬한다 */}
+      <div className="grid grid-cols-2 gap-x2 sm:grid-cols-3 lg:flex lg:justify-end">
+        <ActionButton variant="neutralOutline" size={fieldSize} onClick={openImport}>
+          <PrefixIcon svg={<IconArrowUpBracketDownLine />} />
+          엑셀 업로드
+        </ActionButton>
+        {/* 월 미선택(전체 기간)이면 전체 삭제 사고를 막기 위해 비활성 */}
+        <ActionButton
+          variant="neutralOutline"
+          size={fieldSize}
+          className="text-fg-critical"
+          disabled={!filters.month || items.length === 0}
+          title={filters.month ? undefined : '삭제할 월을 먼저 선택해주세요'}
+          onClick={openBulkDelete}
+        >
+          <PrefixIcon svg={<IconTrashcanLine />} />월 전체 삭제
+        </ActionButton>
+        <ActionButton
+          variant="neutralSolid"
+          size={fieldSize}
+          className="col-span-2 sm:col-span-1"
+          onClick={openCreate}
+        >
+          <PrefixIcon svg={<IconPlusLine />} />
+          거래 추가
+        </ActionButton>
       </div>
 
       {pageError && <p className="t4-regular text-fg-critical">{pageError}</p>}
       {pageNotice && <p className="t4-regular text-fg-neutral-muted">{pageNotice}</p>}
 
-      <div className="flex flex-wrap items-end gap-x3">
-        <div className="w-48">
+      {/* 필터는 한 덩어리로 묶어 액션과 시각적으로 분리한다.
+          고정 px 폭 대신 그리드 셀에 맡겨 어느 폭에서도 열이 가지런히 떨어진다 */}
+      <Surface className="grid grid-cols-2 gap-x3 sm:grid-cols-3 xl:grid-cols-4">
+        {/* 값이 '2026년 7월'로 길어 375px 2열에서는 잘린다 — 모바일에서만 한 줄을 다 쓴다 */}
+        <div className="col-span-2 sm:col-span-1">
           <MonthField
             label="조회 월"
             placeholder="전체 기간"
@@ -1055,7 +1075,7 @@ export function TransactionsPage() {
             }
           />
         </div>
-        <div className="w-32">
+        <div>
           <SelectRoot
             label="구분"
             size="responsive"
@@ -1080,7 +1100,7 @@ export function TransactionsPage() {
             </SelectContent>
           </SelectRoot>
         </div>
-        <div className="w-40">
+        <div>
           <SelectRoot
             label="대분류"
             size="responsive"
@@ -1103,7 +1123,7 @@ export function TransactionsPage() {
           </SelectRoot>
         </div>
         {filters.major && (
-          <div className="w-40">
+          <div>
             <SelectRoot
               label="소분류"
               size="responsive"
@@ -1126,7 +1146,7 @@ export function TransactionsPage() {
             </SelectRoot>
           </div>
         )}
-      </div>
+      </Surface>
 
       {view === 'table' ? (
         <>
@@ -1187,75 +1207,85 @@ export function TransactionsPage() {
                 const category = disp ? disp.category_name : t.category_name
                 const account = accountText(t)
                 return (
-                  <div key={row.id} className="rounded-r2 border p-x3">
-                    <div className="flex items-start justify-between gap-x2">
-                      <div className="flex min-w-0 flex-col gap-x1">
-                        <div className="flex flex-wrap items-center gap-x2">
-                          <Badge variant="weak" tone={KIND_BADGE_TONE[kind]}>{KIND_LABEL[kind]}</Badge>
+                  // 데스크톱 표와 같은 구조로 읽히게 '콘텐츠 | 액션' 두 열로 나눈다 —
+                  // 액션을 본문 줄 수에 따라 떠다니게 두지 않고 카드 오른쪽에 고정 앵커로 세운다
+                  <div
+                    key={row.id}
+                    className="flex items-center gap-x3 rounded-r2 border border-stroke-neutral-weak p-x3"
+                  >
+                    <div className="flex min-w-0 flex-1 flex-col gap-x1">
+                      {/* 가장 중요한 쌍(카테고리 ↔ 금액)을 한 줄에 둔다.
+                          날짜·계정·구성원은 보조 정보라 한 줄로 묶어 아래로 내린다 */}
+                      <div className="flex items-center justify-between gap-x2">
+                        <span className="flex min-w-0 items-center gap-x1_5">
+                          <Badge variant="weak" tone={KIND_BADGE_TONE[kind]}>
+                            {KIND_LABEL[kind]}
+                          </Badge>
                           {t.link_type && (
                             <Badge variant="outline" className={LINK_BADGE_CLASS}>
                               <Icon svg={<IconPaperclipLine />} size="x3" />
                               {LINK_LABEL[t.link_type]}
                             </Badge>
                           )}
-                          <span className="t2-regular tabular-nums text-fg-neutral-muted">
-                            {t.date}
-                            {t.time && ` ${formatTime(t.time)}`}
-                          </span>
-                        </div>
-                        <span className="truncate font-medium">{category}</span>
-                      </div>
-                      <span
-                        className={`shrink-0 font-semibold tabular-nums ${kindAmountClass(kind)}`}
-                      >
-                        {kindAmountSign(kind)}
-                        {formatNumber(amount)}
-                      </span>
-                    </div>
-                    <div className="mt-x2 flex items-end justify-between gap-x2">
-                      <div className="flex min-w-0 flex-col t2-regular text-fg-neutral-muted">
-                        <span className="truncate">
-                          {account}
-                          {t.member_name ? ` · ${t.member_name}` : ''}
+                          <span className="truncate font-medium">{category}</span>
                         </span>
-                        {t.memo && <span className="truncate">{t.memo}</span>}
+                        <span
+                          className={`shrink-0 font-semibold tabular-nums ${kindAmountClass(kind)}`}
+                        >
+                          {kindAmountSign(kind)}
+                          {formatNumber(amount)}
+                        </span>
                       </div>
-                      <div className="flex shrink-0 items-center gap-x2">
-                        {bundle ? (
+                      <span className="t2-regular truncate text-fg-neutral-muted">
+                        <span className="tabular-nums">
+                          {t.date}
+                          {t.time && ` ${formatTime(t.time)}`}
+                        </span>
+                        {` · ${account}`}
+                        {t.member_name ? ` · ${t.member_name}` : ''}
+                      </span>
+                      {t.memo && (
+                        <span className="t2-regular truncate text-fg-neutral-muted">{t.memo}</span>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-x2">
+                      {bundle ? (
+                        <ActionButton
+                          variant="ghost"
+                          size="small"
+                          layout="iconOnly"
+                          className={touchTarget}
+                          aria-label="묶음 보기"
+                          onClick={() => openView(t)}
+                        >
+                          <Icon svg={<IconEyeLine />} />
+                        </ActionButton>
+                      ) : (
+                        <>
                           <ActionButton
                             variant="ghost"
-                            size="small" layout="iconOnly"
+                            size="small"
+                            layout="iconOnly"
                             className={touchTarget}
-                            aria-label="묶음 보기"
-                            onClick={() => openView(t)}
+                            aria-label="거래 수정"
+                            onClick={() => openEdit(t)}
                           >
-                            <Icon svg={<IconEyeLine />} />
+                            <Icon svg={<IconPencilLine />} />
                           </ActionButton>
-                        ) : (
-                          <>
-                            <ActionButton
-                              variant="ghost"
-                              size="small" layout="iconOnly"
-                              className={touchTarget}
-                              aria-label="거래 수정"
-                              onClick={() => openEdit(t)}
-                            >
-                              <Icon svg={<IconPencilLine />} />
-                            </ActionButton>
-                            <ActionButton
-                              variant="ghost"
-                              size="small" layout="iconOnly"
-                              className={touchTarget}
-                              aria-label="거래 삭제"
-                              onClick={() =>
-                                remove(t.id).catch((e: Error) => setPageError(e.message))
-                              }
-                            >
-                              <Icon svg={<IconTrashcanLine />} />
-                            </ActionButton>
-                          </>
-                        )}
-                      </div>
+                          <ActionButton
+                            variant="ghost"
+                            size="small"
+                            layout="iconOnly"
+                            className={touchTarget}
+                            aria-label="거래 삭제"
+                            onClick={() =>
+                              remove(t.id).catch((e: Error) => setPageError(e.message))
+                            }
+                          >
+                            <Icon svg={<IconTrashcanLine />} />
+                          </ActionButton>
+                        </>
+                      )}
                     </div>
                   </div>
                 )
