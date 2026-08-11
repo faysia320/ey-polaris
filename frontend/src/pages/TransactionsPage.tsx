@@ -48,6 +48,7 @@ import { SegmentedControl, SegmentedControlItem } from 'seed-design/ui/segmented
 import { TextField, TextFieldInput } from 'seed-design/ui/text-field'
 
 import { DateField } from '@/components/ui/DateField'
+import { TimeField } from '@/components/ui/TimeField'
 import { MonthField } from '@/components/ui/MonthField'
 import {
   Table,
@@ -1410,13 +1411,13 @@ export function TransactionsPage() {
                   value={form.date}
                   onChange={(date) => setForm({ ...form, date })}
                 />
-                <TextField size="responsive"
+                <TimeField
                   label="시간 (선택)"
+                  placeholder="시간 없음"
+                  clearable
                   value={form.time}
-                  onValueChange={({ value }) => setForm({ ...form, time: value })}
-                >
-                  <TextFieldInput type="time" step="1" aria-label="시간" />
-                </TextField>
+                  onChange={(time) => setForm({ ...form, time })}
+                />
                 <SelectRoot size="responsive"
                   label="구분"
                   value={[form.kind]}

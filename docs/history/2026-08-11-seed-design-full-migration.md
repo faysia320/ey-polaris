@@ -88,6 +88,7 @@ SEED는 모바일 앱 디자인 시스템이라 웹 대시보드 관용구가 �
 - **당근 오렌지가 앱 전체를 지배한다.** 기본 CTA·선택 상태·포커스 링이 전부 `#f60`이다. 되돌리려면 `--seed-color-palette-carrot-*` 오버라이드가 필요하다
 - **입력 컴포넌트의 `size`는 반드시 `responsive`로 준다.** 기본값이 `large`(52px, 터치 기준)라 데스크톱 표 안에서 지나치게 두툼하고, 일부만 `responsive`로 두면 `lg`(1280px) 이상에서 필드 높이가 갈린다. `responsive`는 1280px 미만 `large` / 이상 `medium`(40px)이다
 - **SEED Tabs 안의 오버레이는 `Portal`로 감싸야 한다.** `seed-tabs__content`에 transform이 걸려 있어 `position: fixed`의 containing block이 되고, 감싸지 않으면 사이드 패널·바텀시트가 뷰포트가 아니라 탭 패널 안에 갇힌다
+- **네이티브 날짜/시간 input은 쓸 수 없다.** SEED text-input 스타일이 Chrome의 `::-webkit-calendar-picker-indicator` 박스를 입력 전체 크기로 늘려, 시계 아이콘을 눌러도 피커가 열리지 않고 포커스만 들어간다. `DateField`/`TimeField`/`MonthField`로 감싼 SEED 피커를 쓴다
 - **`touchTarget`은 남겼다.** SEED ActionButton은 `size=small`이 36px, `size=medium`+iconOnly가 40px로 44px 권장치에 못 미쳐 모바일 히트 영역 확장이 여전히 값을 한다
 - **내비 항목이 링크가 아니라 버튼이다.** `SideNavigationGroup`의 `items` API가 `onClick`만 받는다(SEED 블록 예제와 동일) — 새 탭으로 열기가 지원되지 않는다
 

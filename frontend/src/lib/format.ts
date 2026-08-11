@@ -81,6 +81,34 @@ export function formatDateLabel(iso: string): string {
   return d ? `${d.year}년 ${d.month}월 ${d.day}일` : ''
 }
 
+/** SEED TimePicker의 값 — 24시간 기준 시/분 (초는 다루지 않는다) */
+export interface ClockTime {
+  hour: number
+  minute: number
+}
+
+/** 'HH:MM' 또는 'HH:MM:SS' → ClockTime. 빈 문자열이면 undefined. */
+export function toClockTime(time: string): ClockTime | undefined {
+  if (!time) return undefined
+  const [h, m] = time.split(':').map(Number)
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return undefined
+  return { hour: h, minute: m }
+}
+
+/** ClockTime → 'HH:MM' (백엔드의 time 타입이 초 생략을 허용한다) */
+export function fromClockTime(t: ClockTime): string {
+  return `${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}`
+}
+
+/** 'HH:MM(:SS)' → '오후 2:30'. 시간 필드의 표시용 라벨. */
+export function formatTimeLabel(time: string): string {
+  const t = toClockTime(time)
+  if (!t) return ''
+  const period = t.hour < 12 ? '오전' : '오후'
+  const hour12 = t.hour % 12 === 0 ? 12 : t.hour % 12
+  return `${period} ${hour12}:${String(t.minute).padStart(2, '0')}`
+}
+
 /** 오늘 기준 직전 월(YYYY-MM). 조회 화면들의 기본 선택 월로 사용한다. */
 export function previousMonth(): string {
   return addMonths(currentMonth(), -1)

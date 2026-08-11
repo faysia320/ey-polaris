@@ -54,6 +54,7 @@ SEED는 모바일 앱 디자인 시스템이라 웹 대시보드 관용구가 �
 | `Surface.tsx` | 카드 표면. `rounded-r2 + bg-bg-layer-default + border-stroke-neutral-weak` 조합을 한곳에 모은 것 |
 | `DateField.tsx` | SEED DatePicker는 트리거 없는 인라인 달력 — FieldButton + Dialog로 감쌌다 |
 | `MonthField.tsx` | SEED에 월 단위 선택이 없다. DateField와 같은 뼈대에 12개월 그리드 |
+| `TimeField.tsx` | SEED TimePicker(휠)를 같은 뼈대에 담았다. **네이티브 `<input type="time">`을 쓰지 말 것** — SEED text-input 스타일이 Chrome의 `::-webkit-calendar-picker-indicator` 박스를 입력 전체로 늘려 시계 아이콘을 눌러도 피커가 열리지 않는다 |
 
 날짜 값은 앱 전역에서 `'YYYY-MM-DD'` 문자열이고, SEED가 쓰는 `{year, month, day}` 변환은 `lib/format.ts`의 `toCalendarDate`/`fromCalendarDate`가 경계에서만 처리한다.
 
