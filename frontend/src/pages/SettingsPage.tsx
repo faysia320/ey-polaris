@@ -1,24 +1,31 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react'
-
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import {
-  Dialog,
+  IconChevronDownSmallLine,
+  IconChevronRightSmallLine,
+  IconPencilLine,
+  IconPlusLine,
+  IconTrashcanLine,
+} from '@karrotmarket/react-monochrome-icon'
+import { Badge, Icon, PrefixIcon } from '@seed-design/react'
+import { ActionButton } from 'seed-design/ui/action-button'
+import {
+  DialogAction,
+  DialogBody,
   DialogContent,
   DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+  DialogRoot,
+} from 'seed-design/ui/dialog'
 import {
-  Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectRoot,
   SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+} from 'seed-design/ui/select'
+import { Switch } from 'seed-design/ui/switch'
+import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'seed-design/ui/tabs'
+import { TextField, TextFieldInput } from 'seed-design/ui/text-field'
+
 import {
   Table,
   TableBody,
@@ -27,9 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ACCOUNT_TYPES, accountTypeLabel, formatKRW, KIND_LABEL } from '@/lib/format'
-import { touchTarget } from '@/lib/utils'
 import { useAISettingsStore } from '@/stores/aiSettings'
 import { useMasterDataStore } from '@/stores/masterData'
 import type { Account, AccountType, Category, CategoryNature, Member, TransactionKind } from '@/types'
@@ -116,17 +121,18 @@ function CategoriesTab() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="min-w-0 text-sm text-muted-foreground">
+    <div className="flex flex-col gap-x4">
+      <div className="flex flex-wrap items-center justify-between gap-x2">
+        <p className="t4-regular min-w-0 text-fg-neutral-muted">
           고정 지출은 <Badge variant="outline">정기 궤도</Badge>, 변동 지출은{' '}
           <Badge variant="outline">유성우</Badge>로 표시돼요.
         </p>
-        <Button size="sm" className="shrink-0" onClick={openCreate}>
-          <Plus /> 카테고리 추가
-        </Button>
+        <ActionButton size="small" className="shrink-0" onClick={openCreate}>
+          <PrefixIcon svg={<IconPlusLine />} />
+          카테고리 추가
+        </ActionButton>
       </div>
-      <div className="rounded-lg border">
+      <div className="rounded-r2 border border-stroke-neutral-weak">
         <Table>
           <TableHeader>
             <TableRow>
@@ -143,21 +149,23 @@ function CategoriesTab() {
               return (
                 <Fragment key={g.key}>
                   <TableRow
-                    className="cursor-pointer bg-muted/50 hover:bg-muted"
+                    className="cursor-pointer bg-bg-neutral-weak hover:bg-bg-neutral-weak-pressed"
                     onClick={() => toggleGroup(g.key)}
                   >
                     <TableCell colSpan={5}>
-                      <span className="flex items-center gap-2 font-medium">
-                        {isCollapsed ? (
-                          <ChevronRight className="size-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronDown className="size-4 text-muted-foreground" />
-                        )}
+                      <span className="t4-medium flex items-center gap-x2">
+                        <Icon
+                          svg={
+                            isCollapsed ? <IconChevronRightSmallLine /> : <IconChevronDownSmallLine />
+                          }
+                          size="x4"
+                          color="fg.neutralMuted"
+                        />
                         {g.major}
-                        <Badge variant={g.kind === 'income' ? 'secondary' : 'outline'}>
+                        <Badge variant="weak" tone={g.kind === 'income' ? 'positive' : 'neutral'}>
                           {KIND_LABEL[g.kind]}
                         </Badge>
-                        <span className="text-xs font-normal text-muted-foreground">
+                        <span className="t2-regular text-fg-neutral-muted">
                           소분류 {g.items.length}개
                         </span>
                       </span>
@@ -169,7 +177,7 @@ function CategoriesTab() {
                         <TableCell />
                         <TableCell>{c.minor}</TableCell>
                         <TableCell>
-                          <Badge variant={c.kind === 'income' ? 'secondary' : 'outline'}>
+                          <Badge variant="weak" tone={c.kind === 'income' ? 'positive' : 'neutral'}>
                             {KIND_LABEL[c.kind]}
                           </Badge>
                         </TableCell>
@@ -186,71 +194,60 @@ function CategoriesTab() {
         </Table>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{editing ? '카테고리 수정' : '카테고리 추가'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label htmlFor="cat-major">대분류</Label>
-              <Input
-                id="cat-major"
-                list="cat-major-options"
-                placeholder="예: 식비"
-                value={major}
-                onChange={(e) => setMajor(e.target.value)}
-              />
+      <DialogRoot open={open} onOpenChange={setOpen}>
+        <DialogContent title={editing ? '카테고리 수정' : '카테고리 추가'}>
+          <DialogBody>
+            <div className="flex flex-col gap-x4">
+              <TextField label="대분류" value={major} onValueChange={({ value }) => setMajor(value)}>
+                <TextFieldInput list="cat-major-options" placeholder="예: 식비" />
+              </TextField>
               <datalist id="cat-major-options">
                 {majorOptions.map((m) => (
                   <option key={m} value={m} />
                 ))}
               </datalist>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="cat-minor">소분류</Label>
-              <Input
-                id="cat-minor"
-                placeholder="비우면 '미분류'"
-                value={minor}
-                onChange={(e) => setMinor(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>구분</Label>
-              <Select value={kind} onValueChange={(v) => setKind(v as TransactionKind)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
+              <TextField label="소분류" value={minor} onValueChange={({ value }) => setMinor(value)}>
+                <TextFieldInput placeholder="비우면 '미분류'" />
+              </TextField>
+              <SelectRoot
+                label="구분"
+                value={[kind]}
+                onValueChange={([v]) => setKind(v as TransactionKind)}
+              >
+                <SelectTrigger aria-label="구분" />
                 <SelectContent>
-                  <SelectItem value="expense">지출</SelectItem>
-                  <SelectItem value="income">수입</SelectItem>
-                  <SelectItem value="transfer">이체</SelectItem>
+                  <SelectGroup>
+                    <SelectItem value="expense" label="지출" />
+                    <SelectItem value="income" label="수입" />
+                    <SelectItem value="transfer" label="이체" />
+                  </SelectGroup>
                 </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>성격</Label>
-              <Select value={nature} onValueChange={(v) => setNature(v as CategoryNature)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
+              </SelectRoot>
+              <SelectRoot
+                label="성격"
+                value={[nature]}
+                onValueChange={([v]) => setNature(v as CategoryNature)}
+              >
+                <SelectTrigger aria-label="성격" />
                 <SelectContent>
-                  <SelectItem value="fixed">정기 궤도 (고정)</SelectItem>
-                  <SelectItem value="variable">유성우 (변동)</SelectItem>
+                  <SelectGroup>
+                    <SelectItem value="fixed" label="정기 궤도 (고정)" />
+                    <SelectItem value="variable" label="유성우 (변동)" />
+                  </SelectGroup>
                 </SelectContent>
-              </Select>
+              </SelectRoot>
+              {error && <p className="t4-regular text-fg-critical">{error}</p>}
             </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-          </div>
+          </DialogBody>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
+            <DialogAction variant="neutralWeak" onClick={() => setOpen(false)}>
               취소
-            </Button>
-            <Button onClick={submit}>{editing ? '수정' : '추가'}</Button>
+            </DialogAction>
+            {/* 검증 실패 시 다이얼로그를 열어둬야 하므로 DialogAction이 아니라 ActionButton */}
+            <ActionButton onClick={submit}>{editing ? '수정' : '추가'}</ActionButton>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </DialogRoot>
     </div>
   )
 }
@@ -339,13 +336,14 @@ function AccountsTab() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-x4">
       <div className="flex justify-end">
-        <Button size="sm" onClick={openCreate}>
-          <Plus /> 계정 추가
-        </Button>
+        <ActionButton size="small" onClick={openCreate}>
+          <PrefixIcon svg={<IconPlusLine />} />
+          계정 추가
+        </ActionButton>
       </div>
-      <div className="rounded-lg border">
+      <div className="rounded-r2 border border-stroke-neutral-weak">
         <Table>
           <TableHeader>
             <TableRow>
@@ -364,7 +362,7 @@ function AccountsTab() {
                 <TableCell>
                   {accountTypeLabel(a.type)}
                   {a.type === 'easy_pay' && (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="t2-regular text-fg-neutral-muted">
                       {' '}
                       →{' '}
                       {a.linked_account_id
@@ -376,7 +374,7 @@ function AccountsTab() {
                 <TableCell>{members.find((m) => m.id === a.member_id)?.name ?? '—'}</TableCell>
                 <TableCell>{formatKRW(a.opening_balance)}</TableCell>
                 <TableCell>
-                  <Badge variant={a.is_active ? 'secondary' : 'outline'}>
+                  <Badge variant="weak" tone={a.is_active ? 'positive' : 'neutral'}>
                     {a.is_active ? '활성' : '비활성'}
                   </Badge>
                 </TableCell>
@@ -389,103 +387,90 @@ function AccountsTab() {
         </Table>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{editing ? '계정 수정' : '계정 추가'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label htmlFor="acc-name">이름</Label>
-              <Input id="acc-name" value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label>유형</Label>
-              <Select value={type} onValueChange={(v) => setType(v as AccountType)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ACCOUNT_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {type === 'easy_pay' && (
-              <div className="space-y-1">
-                <Label>기본 연결 계정 (선택)</Label>
-                <Select value={linkedAccountId} onValueChange={setLinkedAccountId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">선택 안 함 (거래별 지정)</SelectItem>
-                    {linkableAccounts.map((a) => (
-                      <SelectItem key={a.id} value={String(a.id)}>
-                        {a.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  {linkableAccounts.length === 0
-                    ? '연결할 카드/은행 계정이 없어요. 지금은 비워두고 나중에 지정해도 돼요.'
-                    : '항상 같은 카드로 결제되면 여기서 고정하세요. 건마다 다르면 비워두고 거래에서 하나씩 지정하면 돼요.'}
-                </p>
-              </div>
-            )}
-            <div className="space-y-1">
-              <Label>소유자</Label>
-              <Select value={memberId || undefined} onValueChange={setMemberId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="선택" />
-                </SelectTrigger>
-                <SelectContent>
-                  {members.map((m) => (
-                    <SelectItem key={m.id} value={String(m.id)}>
-                      {m.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="acc-balance">개설 잔액 (원)</Label>
-              <Input
-                id="acc-balance"
-                type="number"
-                value={openingBalance}
-                onChange={(e) => setOpeningBalance(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>상태</Label>
-              <Select
-                value={isActive ? 'active' : 'inactive'}
-                onValueChange={(v) => setIsActive(v === 'active')}
+      <DialogRoot open={open} onOpenChange={setOpen}>
+        <DialogContent title={editing ? '계정 수정' : '계정 추가'}>
+          <DialogBody>
+            <div className="flex flex-col gap-x4">
+              <TextField label="이름" value={name} onValueChange={({ value }) => setName(value)}>
+                <TextFieldInput />
+              </TextField>
+              <SelectRoot
+                label="유형"
+                value={[type]}
+                onValueChange={([v]) => setType(v as AccountType)}
               >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger aria-label="유형" />
                 <SelectContent>
-                  <SelectItem value="active">활성</SelectItem>
-                  <SelectItem value="inactive">비활성</SelectItem>
+                  <SelectGroup>
+                    {ACCOUNT_TYPES.map((t) => (
+                      <SelectItem key={t.value} value={t.value} label={t.label} />
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
-              </Select>
+              </SelectRoot>
+              {type === 'easy_pay' && (
+                <SelectRoot
+                  label="기본 연결 계정 (선택)"
+                  description={
+                    linkableAccounts.length === 0
+                      ? '연결할 카드/은행 계정이 없어요. 지금은 비워두고 나중에 지정해도 돼요.'
+                      : '항상 같은 카드로 결제되면 여기서 고정하세요. 건마다 다르면 비워두고 거래에서 하나씩 지정하면 돼요.'
+                  }
+                  value={[linkedAccountId]}
+                  onValueChange={([v]) => setLinkedAccountId(v)}
+                >
+                  <SelectTrigger aria-label="기본 연결 계정" />
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="none" label="선택 안 함 (거래별 지정)" />
+                      {linkableAccounts.map((a) => (
+                        <SelectItem key={a.id} value={String(a.id)} label={a.name} />
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </SelectRoot>
+              )}
+              <SelectRoot
+                label="소유자"
+                value={memberId ? [memberId] : []}
+                onValueChange={([v]) => setMemberId(v ?? '')}
+              >
+                <SelectTrigger aria-label="소유자" placeholder="선택" />
+                <SelectContent>
+                  <SelectGroup>
+                    {members.map((m) => (
+                      <SelectItem key={m.id} value={String(m.id)} label={m.name} />
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </SelectRoot>
+              <TextField
+                label="개설 잔액 (원)"
+                value={openingBalance}
+                onValueChange={({ value }) => setOpeningBalance(value)}
+              >
+                <TextFieldInput type="number" />
+              </TextField>
+              {/* 이분 상태라 Select보다 Switch가 SEED 관용구에 맞는다 */}
+              <div className="flex items-center justify-between gap-x2">
+                <span className="t4-medium">활성 상태</span>
+                <Switch
+                  aria-label="활성 상태"
+                  checked={isActive}
+                  onCheckedChange={(checked) => setIsActive(checked === true)}
+                />
+              </div>
+              {error && <p className="t4-regular text-fg-critical">{error}</p>}
             </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-          </div>
+          </DialogBody>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
+            <DialogAction variant="neutralWeak" onClick={() => setOpen(false)}>
               취소
-            </Button>
-            <Button onClick={submit}>{editing ? '수정' : '추가'}</Button>
+            </DialogAction>
+            <ActionButton onClick={submit}>{editing ? '수정' : '추가'}</ActionButton>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </DialogRoot>
     </div>
   )
 }
@@ -530,13 +515,14 @@ function MembersTab() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-x4">
       <div className="flex justify-end">
-        <Button size="sm" onClick={openCreate}>
-          <Plus /> 구성원 추가
-        </Button>
+        <ActionButton size="small" onClick={openCreate}>
+          <PrefixIcon svg={<IconPlusLine />} />
+          구성원 추가
+        </ActionButton>
       </div>
-      <div className="rounded-lg border">
+      <div className="rounded-r2 border border-stroke-neutral-weak">
         <Table>
           <TableHeader>
             <TableRow>
@@ -550,9 +536,9 @@ function MembersTab() {
               <TableRow key={m.id}>
                 <TableCell>{m.name}</TableCell>
                 <TableCell>
-                  <span className="flex items-center gap-2">
+                  <span className="flex items-center gap-x2">
                     <span
-                      className="inline-block size-4 rounded-full"
+                      className="inline-block size-x4 rounded-full"
                       style={{ backgroundColor: m.color }}
                     />
                     {m.color}
@@ -567,36 +553,37 @@ function MembersTab() {
         </Table>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{editing ? '구성원 수정' : '구성원 추가'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label htmlFor="mem-name">이름</Label>
-              <Input id="mem-name" value={name} onChange={(e) => setName(e.target.value)} />
+      <DialogRoot open={open} onOpenChange={setOpen}>
+        <DialogContent title={editing ? '구성원 수정' : '구성원 추가'}>
+          <DialogBody>
+            <div className="flex flex-col gap-x4">
+              <TextField label="이름" value={name} onValueChange={({ value }) => setName(value)}>
+                <TextFieldInput />
+              </TextField>
+              {/* 색상은 네이티브 color 입력을 그대로 쓴다 — SEED에 대응 컴포넌트가 없다 */}
+              <div className="flex flex-col gap-x1">
+                <label className="t4-medium" htmlFor="mem-color">
+                  색상
+                </label>
+                <input
+                  id="mem-color"
+                  type="color"
+                  className="h-x10 w-x16 rounded-r2 border border-stroke-neutral-weak bg-bg-layer-default p-x1"
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                />
+              </div>
+              {error && <p className="t4-regular text-fg-critical">{error}</p>}
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="mem-color">색상</Label>
-              <Input
-                id="mem-color"
-                type="color"
-                className="h-10 w-20 p-1"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-              />
-            </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-          </div>
+          </DialogBody>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
+            <DialogAction variant="neutralWeak" onClick={() => setOpen(false)}>
               취소
-            </Button>
-            <Button onClick={submit}>{editing ? '수정' : '추가'}</Button>
+            </DialogAction>
+            <ActionButton onClick={submit}>{editing ? '수정' : '추가'}</ActionButton>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </DialogRoot>
     </div>
   )
 }
@@ -605,20 +592,25 @@ function MembersTab() {
 function RowActions({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => Promise<void> }) {
   const [error, setError] = useState<string | null>(null)
   return (
-    <div className="flex items-center justify-end gap-2">
-      {error && <span className="max-w-48 truncate text-xs text-destructive" title={error}>{error}</span>}
-      <Button variant="ghost" size="icon-sm" className={touchTarget} aria-label="수정" onClick={onEdit}>
-        <Pencil />
-      </Button>
-      <Button
+    <div className="flex items-center justify-end gap-x2">
+      {error && (
+        <span className="t2-regular max-w-48 truncate text-fg-critical" title={error}>
+          {error}
+        </span>
+      )}
+      <ActionButton variant="ghost" size="small" layout="iconOnly" aria-label="수정" onClick={onEdit}>
+        <Icon svg={<IconPencilLine />} />
+      </ActionButton>
+      <ActionButton
         variant="ghost"
-        size="icon-sm"
-        className={touchTarget}
+        size="small"
+        color="fg.critical"
+        layout="iconOnly"
         aria-label="삭제"
         onClick={() => onDelete().catch((e: Error) => setError(e.message))}
       >
-        <Trash2 className="text-destructive" />
-      </Button>
+        <Icon svg={<IconTrashcanLine />} />
+      </ActionButton>
     </div>
   )
 }
@@ -656,45 +648,38 @@ function AISettingsTab() {
   }
 
   return (
-    <div className="max-w-md space-y-4">
-      <p className="text-sm text-muted-foreground">
+    <div className="flex max-w-md flex-col gap-x4">
+      <p className="t4-regular text-fg-neutral-muted">
         대시보드 AI 리포트 생성에 사용할 OpenAI API 키와 모델을 설정합니다. 키는 서버에 저장되며 화면에
         다시 표시되지 않습니다.
       </p>
-      <div className="space-y-1.5">
-        <Label htmlFor="ai-key">OpenAI API 키</Label>
-        <Input
-          id="ai-key"
-          type="password"
-          autoComplete="off"
-          placeholder="sk-..."
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-        />
-        <p className="text-xs text-muted-foreground">
-          {settings?.api_key_set
+      <TextField
+        label="OpenAI API 키"
+        description={
+          settings?.api_key_set
             ? `키가 등록되어 있습니다 (${settings.api_key_hint}). 변경하려면 새 키를 입력하세요.`
-            : '아직 키가 등록되지 않았습니다.'}
-        </p>
+            : '아직 키가 등록되지 않았습니다.'
+        }
+        value={apiKey}
+        onValueChange={({ value }) => setApiKey(value)}
+      >
+        <TextFieldInput type="password" autoComplete="off" placeholder="sk-..." />
+      </TextField>
+      <TextField
+        label="모델"
+        description="비우면 기본값(gpt-4.1-mini)이 사용됩니다. OpenAI의 가성비 모델을 권장합니다."
+        value={model}
+        onValueChange={({ value }) => setModelEdit(value)}
+      >
+        <TextFieldInput placeholder="gpt-4.1-mini" maxLength={50} />
+      </TextField>
+      {error && <p className="t4-regular text-fg-critical">{error}</p>}
+      {saved && <p className="t4-regular text-fg-positive">저장되었습니다.</p>}
+      <div className="flex">
+        <ActionButton onClick={handleSave} loading={saving}>
+          저장
+        </ActionButton>
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="ai-model">모델</Label>
-        <Input
-          id="ai-model"
-          placeholder="gpt-4.1-mini"
-          maxLength={50}
-          value={model}
-          onChange={(e) => setModelEdit(e.target.value)}
-        />
-        <p className="text-xs text-muted-foreground">
-          비우면 기본값(gpt-4.1-mini)이 사용됩니다. OpenAI의 가성비 모델을 권장합니다.
-        </p>
-      </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      {saved && <p className="text-sm text-emerald-400">저장되었습니다.</p>}
-      <Button onClick={handleSave} disabled={saving}>
-        {saving ? '저장 중…' : '저장'}
-      </Button>
     </div>
   )
 }
@@ -708,34 +693,32 @@ export function SettingsPage() {
   }, [loaded, fetchAll])
 
   if (error) {
-    return <p className="text-destructive">기준정보를 불러오지 못했습니다: {error}</p>
+    return <p className="t4-regular text-fg-critical">기준정보를 불러오지 못했습니다: {error}</p>
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">기준정보 관리</h1>
-      <Tabs defaultValue="categories">
-        {/* 탭이 4개 — 좁은 화면(375px)에서 페이지 가로 스크롤 대신 탭 목록 내부에서만 가로 스크롤.
-            overflow-y-hidden로 가로 스크롤이 세로 스크롤바를 승격시키는 부작용을 막는다 */}
-        <TabsList className="max-w-full justify-start overflow-x-auto overflow-y-hidden">
+    <div className="flex flex-col gap-x6">
+      <h1 className="screen-title">기준정보 관리</h1>
+      <TabsRoot defaultValue="categories">
+        <TabsList>
           <TabsTrigger value="categories">카테고리</TabsTrigger>
           <TabsTrigger value="accounts">자산 계정</TabsTrigger>
           <TabsTrigger value="members">구성원</TabsTrigger>
           <TabsTrigger value="ai">AI 설정</TabsTrigger>
         </TabsList>
-        <TabsContent value="categories" className="mt-4">
+        <TabsContent value="categories" className="mt-x4">
           <CategoriesTab />
         </TabsContent>
-        <TabsContent value="accounts" className="mt-4">
+        <TabsContent value="accounts" className="mt-x4">
           <AccountsTab />
         </TabsContent>
-        <TabsContent value="members" className="mt-4">
+        <TabsContent value="members" className="mt-x4">
           <MembersTab />
         </TabsContent>
-        <TabsContent value="ai" className="mt-4">
+        <TabsContent value="ai" className="mt-x4">
           <AISettingsTab />
         </TabsContent>
-      </Tabs>
+      </TabsRoot>
     </div>
   )
 }
