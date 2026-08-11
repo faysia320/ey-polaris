@@ -35,6 +35,8 @@ export default defineConfig([
     rules: {
       '@typescript-eslint/no-empty-object-type': 'off',
       'react-refresh/only-export-components': 'off',
+      // snackbar 스니펫처럼 props를 구조분해로 걷어내 나머지만 전달하는 관용구를 쓴다
+      '@typescript-eslint/no-unused-vars': 'off',
     },
   },
 ])
